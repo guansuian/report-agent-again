@@ -24,13 +24,12 @@ __pycache__/
 htmlcov/
 coverage.xml
 
-# 前端依赖、构建文件（保留 package-lock.json）
+# 前端依赖、临时构建文件（保留 package-lock.json 和 backend/static）
 node_modules/
 .vite/
 dist/
 build/
 coverage/
-/backend/static/
 
 # 本地日志、数据库和运行产物
 *.log
