@@ -1,0 +1,36 @@
+[project]
+name = "report-agent"
+version = "0.1.0"
+description = "垂直报表 agent —— 基于 LangGraph 的意图路由 + 工具执行 + LLM 兜底"
+requires-python = ">=3.10"
+# 报表 agent 的运行时依赖：
+#   langgraph        —— 画图 / 编译图（StateGraph、CompiledStateGraph）
+#   langchain        —— create_agent 与 agent 原语
+#   langchain-openai —— 连模型（deepseek 走 OpenAI 兼容接口）
+#   python-dotenv    —— 读 .env，把 OPENAI_API_KEY 等注入 os.environ
+# 数据库（postgres）—— checkpointer 持久化 + 业务表 ORM：
+#   langgraph-checkpoint-postgres —— 提供 AsyncPostgresSaver（checkpointer 用）
+#   psycopg[binary]  —— 连 postgres 的驱动（checkpointer / AsyncPostgresSaver 用）
+#   psycopg-pool     —— 异步连接池 AsyncConnectionPool（AsyncPostgresSaver 用）
+#   sqlalchemy[asyncio] —— 业务表 ORM（RunEventRow 等），建表/读写走它
+#   asyncpg          —— SQLAlchemy 的 postgres 异步驱动（postgresql+asyncpg://）
+dependencies = [
+    "langgraph>=0.2",
+    "langchain>=0.3",
+    "langchain-openai>=0.2",
+    "python-dotenv==1.2.2",
+    "langgraph-checkpoint-postgres>=3.2.0",
+    "psycopg[binary]>=3.3.3",
+    "psycopg-pool>=3.3.0",
+    "sqlalchemy[asyncio]>=2.0,<3.0",
+    "asyncpg>=0.29",
+    "httpx>=0.27,<1",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*"]

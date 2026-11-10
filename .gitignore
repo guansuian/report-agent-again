@@ -1,0 +1,63 @@
+# 密钥和本机环境配置（示例文件可以提交）
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Python 虚拟环境、缓存和安装产物
+.venv/
+.venv-*/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# 前端依赖、构建文件（保留 package-lock.json）
+node_modules/
+.vite/
+dist/
+build/
+coverage/
+/backend/static/
+
+# 本地日志、数据库和运行产物
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-wal
+*.db-shm
+*.dump
+/logs/
+/backend/logs/
+/artifacts/
+/backend/artifacts/
+/backend/.deer-flow/
+
+# 编辑器和操作系统文件
+.idea/
+.vscode/
+.jbeval/
+.DS_Store
+._*
+Thumbs.db
+*.swp
+*.swo
+*~

@@ -1,0 +1,38 @@
+# 网关层的依赖 —— 对应 deer-flow 的 backend/pyproject.toml（最小版）。
+#
+# 为什么分成两份：
+#   packages/harness/pyproject.toml  → 干活的 core（不碰 HTTP）
+#   backend/pyproject.toml（本文件）  → 对外的门面 app（用 fastapi）
+# 谁要什么依赖，就写在自己那份里，互不污染。
+
+[project]
+name = "report-agent-backend"
+version = "0.1.0"
+description = "报表 agent 的 HTTP 网关层"
+requires-python = ">=3.10"
+
+dependencies = [
+    # 干活的 core 包。它不在 PyPI 上，需要本地可编辑安装：
+    #   .venv/bin/pip install -e packages/harness
+    "report-agent",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+]
+
+# 只在开发/跑测试时需要，部署不需要装：
+#   .venv/bin/pip install -e "backend[dev]"
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+# 把 backend/ 本身加进 import 搜索路径，测试里才能 import app / tests
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

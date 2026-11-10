@@ -1,0 +1,34 @@
+# 报表 agent 配置 —— 对应真实 deer-flow 根目录的 config.yaml（这里只保留最小段落）
+
+models:
+  - name: deepseek-flash
+    provider: langchain_openai
+    api_key: $DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com
+    supports_vision: false
+    supports_thinking: true
+#  - name: gpt-4o
+#    provider: langchain_openai
+#    supports_vision: true
+#    supports_thinking: true
+
+agents:
+  - name: default
+    model: null
+    skills: null
+    memory_enabled: true
+
+authorization:
+  enabled: false
+  fail_closed: false
+  default_role: user
+
+database:
+  backend: postgres
+  postgres_url: $DATABASE_URL
+
+memory_enabled: true
+summarization_enabled: true
+token_usage_enabled: true
+loop_detection_enabled: true
+token_budget_enabled: false
