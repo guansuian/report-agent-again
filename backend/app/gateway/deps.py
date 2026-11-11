@@ -43,7 +43,7 @@ get_run_manager: Callable[[Request], RunManager] = _require("run_manager", "run 
 get_event_store: Callable[[Request], RunEventStore] = _require("event_store", "事件存储")
 get_checkpointer: Callable[[Request], BaseCheckpointSaver] = _require("checkpointer", "会话记忆")
 get_thread_store: Callable[[Request], ThreadMetaStore] = _require("thread_store", "会话存储")
-get_company_client: Callable[[Request], CompanyClient] = _require("company_client", "公司接口客户端")
+get_app_company_client: Callable[[Request], CompanyClient] = _require("company_client", "公司接口客户端")
 
 
 def get_company_request_user(request: Request, *, user_id: str | None) -> RequestUser | None:
@@ -74,5 +74,5 @@ def get_run_context(request: Request) -> RunContext:
         checkpointer=get_checkpointer(request),
         event_store=get_event_store(request),
         thread_store=get_thread_store(request),
-        company_client=get_company_client(request),
+        company_client=get_app_company_client(request),
     )

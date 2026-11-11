@@ -3,6 +3,7 @@ import logging
 from langchain.agents import create_agent
 from langgraph.graph.state import CompiledStateGraph
 
+from core.agents.lead_agent.prompt import apply_prompt_template
 from core.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from core.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
 from core.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
@@ -36,21 +37,21 @@ def make_lead_agent(config: dict) -> CompiledStateGraph:
     # 5. 创建模型实例（装配内部一律 attach_tracing=False，避免重复 trace）
     model = create_chat_model(model_name, attach_tracing=False, app_config=app_config)
 
-    # 6. 收集工具（对应 deer-flow 的 get_available_tools，当前只有一个 query_report）
+    # 6. 收集工具（对应 deer-flow 的 get_available_tools，当前是 species_trend + ask_clarification）
     tools = get_available_tools(app_config=app_config)
 
     # 7. 构建中间件链（对应 deer-flow 的 build_middlewares）
     middlewares = build_middlewares(app_config)
 
-    # 8. 组装成可运行的图（对应 langchain.agents.create_agent）
+    # 8. 生成完整的系统提示词
+    system_prompt = apply_prompt_template()
+
+    # 9. 组装成可运行的图（对应 langchain.agents.create_agent）
     return create_agent(
         model=model,
         tools=tools,
         middleware=middlewares,
-        system_prompt=(
-            "你是报表查询助手。用户问指标数值时，先调 query_report 拿数据，再用结果回答，不要编数字。"
-            "信息不足时（没说维度、时间范围、口径），先用 ask_clarification 问清楚，不要猜。"
-        ),
+        system_prompt=system_prompt,
     )
 
 def build_middlewares(app_config: AppConfig) -> list:

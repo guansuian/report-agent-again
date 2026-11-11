@@ -1,4 +1,18 @@
-import { normalizeUserId } from '../storage.js';
+import { loadLogin, normalizeUserId } from '../storage.js';
+
+// 普通 API 和 SSE 使用同一套请求头；用户身份不放进聊天消息。
+function requestHeaders(userId, headers = {}) {
+  const login = loadLogin();
+  if (!login) return headers;
+  if (userId && login.userId !== normalizeUserId(userId)) {
+    throw new Error('登录用户已切换，请重新打开会话。');
+  }
+  return {
+    ...headers,
+    Authorization: `Bearer ${login.token}`,
+    ...(login.deviceFingerprint ? { 'X-Device-Fingerprint': login.deviceFingerprint } : {}),
+  };
+}
 
 // 所有地址都用 /api：开发时由 Vite 代理，构建后直接请求同源后端。
 async function checked(response) {
@@ -11,13 +25,15 @@ async function checked(response) {
   throw error;
 }
 
-export async function getJSON(path, signal) {
-  return requestJSON(path, { signal, cache: 'no-store' });
+export async function getJSON(path, signal, userId) {
+  return requestJSON(path, { signal, cache: 'no-store' }, userId);
 }
 
-async function requestJSON(path, options) {
+async function requestJSON(path, options, userId) {
   try {
-    const response = await checked(await fetch(path, options));
+    const response = await checked(await fetch(path, {
+      ...options, headers: requestHeaders(userId, options.headers),
+    }));
     return response.status === 204 ? null : await response.json();
   } catch (error) {
     if (error instanceof TypeError) throw new Error('无法连接服务，请确认后端已启动，然后重试。');
@@ -27,17 +43,17 @@ async function requestJSON(path, options) {
 
 const query = (userId, parameters = {}) => new URLSearchParams({ user_id: normalizeUserId(userId), ...parameters }).toString();
 export const listThreads = (userId, { offset = 0, signal } = {}) => getJSON(
-  `/api/threads?${query(userId, { limit: 50, offset })}`, signal,
+  `/api/threads?${query(userId, { limit: 50, offset })}`, signal, userId,
 );
 export const listMessages = (threadId, { userId, before, signal } = {}) => getJSON(
-  `/api/threads/${encodeURIComponent(threadId)}/messages?${query(userId, { limit: 50, ...(before ? { before_seq: before } : {}) })}`, signal,
+  `/api/threads/${encodeURIComponent(threadId)}/messages?${query(userId, { limit: 50, ...(before ? { before_seq: before } : {}) })}`, signal, userId,
 );
-export const listRuns = (threadId, userId, signal) => getJSON(`/api/threads/${encodeURIComponent(threadId)}/runs?${query(userId, { limit: 50 })}`, signal);
-export const getRun = (runId, userId, signal) => getJSON(`/api/runs/${encodeURIComponent(runId)}?${query(userId)}`, signal);
+export const listRuns = (threadId, userId, signal) => getJSON(`/api/threads/${encodeURIComponent(threadId)}/runs?${query(userId, { limit: 50 })}`, signal, userId);
+export const getRun = (runId, userId, signal) => getJSON(`/api/runs/${encodeURIComponent(runId)}?${query(userId)}`, signal, userId);
 
 export async function getThread(threadId, userId, signal) {
   userId = normalizeUserId(userId);
-  const thread = await getJSON(`/api/threads/${encodeURIComponent(threadId)}?${query(userId)}`, signal);
+  const thread = await getJSON(`/api/threads/${encodeURIComponent(threadId)}?${query(userId)}`, signal, userId);
   // 当前详情接口没有归属过滤；页面在展示、打开和改名前核对归属。
   if (thread.user_id !== userId) {
     const error = new Error('找不到属于当前用户的会话。');
@@ -52,7 +68,7 @@ export async function createThread(userId, { threadId, title }, signal) {
   const thread = await requestJSON('/api/threads', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
     body: JSON.stringify({ thread_id: threadId, user_id: userId, display_name: title }),
-  });
+  }, userId);
   if (thread.user_id !== userId) throw new Error('会话归属不一致，请新建对话。');
   return thread;
 }
@@ -62,7 +78,7 @@ export async function renameThread(threadId, userId, title, signal) {
   return requestJSON(`/api/threads/${encodeURIComponent(threadId)}?${query(userId)}`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, signal,
     body: JSON.stringify({ display_name: title }),
-  });
+  }, userId);
 }
 
 // 网络分块不等于 SSE 事件：一条 JSON 可能拆在多次 read() 中。
@@ -109,10 +125,11 @@ export async function readSSE(response, onEvent) {
 
 export async function streamRun(threadId, message, onEvent, userId, signal) {
   userId = normalizeUserId(userId);
+  const headers = requestHeaders(userId, { 'Content-Type': 'application/json' });
   let response;
   try {
     response = await fetch(`/api/threads/${encodeURIComponent(threadId)}/runs/stream`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+      method: 'POST', headers, signal,
       body: JSON.stringify({ user_id: userId, input: { messages: [message] }, stream_mode: ['values', 'messages-tuple'] }),
     });
   } catch (error) {

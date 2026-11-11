@@ -6,6 +6,10 @@
     .login-card h1 { margin:20px 0 6px; font-size:29px; letter-spacing:1px; color:#303c54; }
     .login-intro { margin:0 0 29px; color:#8090a7; font-size:14px; }
     .login-input { display:block; width:100%; margin-top:9px; padding:12px 14px; border:1px solid #d5e0ef; border-radius:10px; background:#f8fbff; color:var(--ink); }
+    .login-field + .login-field { margin-top:18px; }
+    .login-field .form-label { margin:0; }
+    .login-field-hint { margin:7px 0 0; color:#8998ad; font-size:12px; }
+    .login-optional { margin-left:8px; color:#8b9bb0; font-size:12px; font-weight:400; }
     .login-card .login-submit { width:100%; margin-top:24px; padding:12px; border-radius:10px; background:linear-gradient(100deg,#44a5fa,#7764ec); color:white; font-weight:600; }
     .login-hint { margin:23px 0 0; color:#8998ad; font-size:12px; text-align:center; }
     .login-footer { margin:27px 0 0; color:#8e9db3; font-size:12px; text-align:center; }
@@ -171,6 +175,33 @@ button:disabled { opacity:.55; }
 .input-hint { color:#a7b4c7; font-size:11px; }
 .composer-footnote { text-align:center; font-size:10px; color:#aab7c9; margin:8px 0 0; }
 .bubble p { white-space:pre-wrap; }
+.markdown-message { min-width:0; line-height:1.85; }
+.markdown-message p { white-space:normal; margin:0 0 10px; }
+.markdown-message h1,.markdown-message h2,.markdown-message h3,.markdown-message h4,.markdown-message h5,.markdown-message h6 { margin:18px 0 9px; font-weight:600; line-height:1.5; }
+.markdown-message h1 { font-size:22px; }
+.markdown-message h2 { font-size:19px; }
+.markdown-message h3 { font-size:17px; }
+.markdown-message h4,.markdown-message h5,.markdown-message h6 { font-size:15px; }
+.markdown-message ul,.markdown-message ol { margin:8px 0 12px; padding-left:24px; }
+.markdown-message li { margin:3px 0; }
+.markdown-message li>p { margin-bottom:5px; }
+.markdown-message a { color:#567fce; text-decoration:underline; text-underline-offset:3px; }
+.markdown-message code { padding:2px 5px; border-radius:4px; background:#eef3fa; font:0.9em ui-monospace,SFMono-Regular,Consolas,monospace; }
+.markdown-message pre { max-width:100%; margin:12px 0; padding:14px 16px; overflow-x:auto; border:1px solid #e1e9f4; border-radius:9px; background:#f6f8fc; white-space:pre; }
+.markdown-message pre code { padding:0; background:none; font-size:12.5px; line-height:1.7; }
+.markdown-message blockquote { margin:12px 0; padding:2px 0 2px 14px; border-left:3px solid #bed2f2; color:#7889a2; }
+.markdown-message hr { margin:18px 0; border:0; border-top:1px solid #e2eaf5; }
+.markdown-message img { display:block; max-width:100%; height:auto; margin:12px 0; border-radius:8px; }
+.markdown-message .contains-task-list { padding-left:0; list-style:none; }
+.markdown-message .task-list-item input { margin:0 8px 0 0; vertical-align:middle; }
+.markdown-message>:first-child { margin-top:0; }
+.markdown-message>:last-child { margin-bottom:0; }
+.markdown-table { max-width:100%; margin:12px 0; overflow-x:auto; border:1px solid #dfe8f5; border-radius:9px; }
+.markdown-table table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.markdown-table th,.markdown-table td { padding:9px 14px; border-bottom:1px solid #e6edf7; text-align:left; white-space:nowrap; }
+.markdown-table th { background:#f1f6fd; color:#536986; font-weight:600; }
+.markdown-table tbody tr:last-child td { border-bottom:0; }
+.markdown-table tbody tr:hover { background:#f8fbff; }
 .tool-avatar { margin-left:10px; width:22px; flex:0 0 22px; color:#a7b6cd; }
 .tool-avatar .icon { width:19px; }
 .message.tool { align-items:center; }

@@ -5,43 +5,15 @@ import { useChat } from './hooks/useChat.js';
 import { groupMessagesForDisplay, isActive, STATUS_LABELS } from './lib/messages.js';
 import { RunHistory } from './components/RunHistory.jsx';
 import { ClarificationCard } from './components/ClarificationCard.jsx';
+import { MarkdownMessage } from './components/MarkdownMessage.jsx';
 import { clarificationOf, clarificationState } from './lib/humanInput.js';
 import { Login } from './components/Login.jsx';
-import { loadUserId, saveUserId } from './storage.js';
+import { loadLogin, saveLogin } from './storage.js';
 
 function Avatar({ user = false }) {
   return user
     ? <div className="avatar user-avatar" aria-hidden="true"><span className="pig">🐷</span></div>
     : <div className="avatar robot-avatar" aria-hidden="true"><span className="robot-antenna" /><span className="robot-head" /></div>;
-}
-
-function InlineText({ text }) {
-  return text.split(/(\*\*.+?\*\*|`[^`]+`)/g).map((part, index) => part.startsWith('**') && part.endsWith('**')
-    ? <strong key={index}>{part.slice(2, -2)}</strong>
-    : part.startsWith('`') && part.endsWith('`') ? <code key={index}>{part.slice(1, -1)}</code> : part);
-}
-
-// 用 React 渲染文字，消息里的 HTML 不会被当成代码执行。
-function MessageText({ text }) {
-  const elements = [];
-  let items = [];
-  function flushList() {
-    if (items.length) elements.push(<ul key={`list-${elements.length}`}>{items}</ul>);
-    items = [];
-  }
-  text.split('\n').forEach((line, index) => {
-    if (line.startsWith('- ')) {
-      const content = line.slice(2);
-      const label = content.match(/^([^：]{1,8}：)(.*)$/);
-      items.push(<li key={index}>{label ? <><strong>{label[1]}</strong><InlineText text={label[2]} /></> : <InlineText text={content} />}</li>);
-    } else {
-      flushList();
-      if (/^#{1,4} /.test(line)) elements.push(<h3 key={index}><InlineText text={line.replace(/^#{1,4} /, '')} /></h3>);
-      else if (line.trim()) elements.push(<p key={index}><InlineText text={line} /></p>);
-    }
-  });
-  flushList();
-  return elements;
 }
 
 function Header({ sidebarOpen, onMenu, onHome, onDialog, userId, onLogout }) {
@@ -93,7 +65,7 @@ function Messages({ messages, busy, onPrompt, onCopy, onAnswer, humanInput }) {
         if (message.role === 'tool') return <details className="tool-result" key={message.id}><summary>{message.name === 'query_report' ? '报表查询结果' : message.name || '工具结果'}<span>展开查看</span></summary><pre>{message.text}</pre></details>;
         const visibleCalls = toolCallsOf(message);
         return <div className="assistant-part" key={message.id}>
-          {message.text && <div className="bubble"><MessageText text={message.text} /></div>}
+          {message.text && <div className="bubble"><MarkdownMessage text={message.text} /></div>}
           {!!visibleCalls.length && <div className="tool-calls"><Icon name="search" />{visibleCalls.map(call => call.name === 'query_report' ? '查询报表数据' : call.name || '执行工具').join('、')}</div>}
         </div>;
       })}
@@ -142,10 +114,10 @@ function OpenSession({ onOpen }) {
 }
 
 export default function App() {
-  const [userId, setUserId] = useState(loadUserId);
-  function login(id) { saveUserId(id); setUserId(id); }
-  function logout() { saveUserId(null); setUserId(null); }
-  return userId ? <ChatPage key={userId} userId={userId} onLogout={logout} /> : <Login onLogin={login} />;
+  const [identity, setIdentity] = useState(loadLogin);
+  function login(values) { setIdentity(saveLogin(values)); }
+  function logout() { saveLogin(null); setIdentity(null); }
+  return identity ? <ChatPage key={identity.userId} userId={identity.userId} onLogout={logout} /> : <Login onLogin={login} />;
 }
 
 function ChatPage({ userId, onLogout }) {

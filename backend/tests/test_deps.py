@@ -4,7 +4,6 @@ import pytest
 from fastapi import FastAPI, HTTPException
 
 from app.gateway.deps import (
-    get_company_client,
     get_checkpointer,
     get_event_store,
     get_run_context,
@@ -26,7 +25,6 @@ def test_getters_raise_503_when_shelf_is_empty():
         get_event_store,
         get_checkpointer,
         get_thread_store,
-        get_company_client,
     ):
         with pytest.raises(HTTPException) as exc_info:
             getter(request)
@@ -43,7 +41,6 @@ def test_getters_return_the_singletons():
     assert get_event_store(request) is app.state.event_store
     assert get_checkpointer(request) is app.state.checkpointer
     assert get_thread_store(request) is app.state.thread_store
-    assert get_company_client(request) is app.state.company_client
 
 
 def test_run_context_has_checkpointer():
@@ -55,4 +52,3 @@ def test_run_context_has_checkpointer():
     assert ctx.checkpointer is app.state.checkpointer
     assert ctx.event_store is app.state.event_store
     assert ctx.thread_store is app.state.thread_store
-    assert ctx.company_client is app.state.company_client

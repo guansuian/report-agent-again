@@ -14,7 +14,7 @@ from langchain_core.tools import BaseTool
 
 from core.config.app_config import AppConfig
 from core.tools.builtins.clarification_tool import ask_clarification_tool
-from core.tools.report_tools import query_report
+from core.tools.report import species_trend
 
 
 def get_available_tools(*, app_config: AppConfig | None = None, **kwargs) -> list[BaseTool]:
@@ -27,4 +27,4 @@ def get_available_tools(*, app_config: AppConfig | None = None, **kwargs) -> lis
     不登记它就没有「反问用户」这个动作可选。
     """
     _ = app_config, kwargs
-    return [query_report, ask_clarification_tool]
+    return [species_trend, ask_clarification_tool]

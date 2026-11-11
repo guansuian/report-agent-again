@@ -2,16 +2,22 @@
 
 React + Vite。保留公司 SVG Logo 和原页面样式，已经接入后端真实聊天接口。
 支持新建对话、流式回复、历史消息、工具结果、运行记录和运行详情。
+AI 回复通过 `react-markdown` 和 `remark-gfm` 渲染，支持表格、标题、列表、引用、链接和代码块。
+宽表格与代码块可在消息内部横向滚动；模型消息中的原始 HTML 不执行。
 
 ## 用户入口
 
-先输入 `user_id` 登录，再查看该用户的会话。当前是用户 ID 入口，没有密码验证。
-登录用户保存在当前标签页的 sessionStorage，刷新后继续使用；退出后回到登录页。
+填写 `user_id`、公司系统提供的 Token，以及可选的设备指纹，再查看该用户的会话。
+Token 输入默认隐藏，支持粘贴纯 Token 或带 `Bearer` 前缀的内容。
+登录信息保存在当前标签页的 sessionStorage，刷新后继续使用；退出后清除并回到登录页。
+旧版本仅保存用户 ID 的登录信息需要重新填写。Token 不写入 localStorage 或聊天消息。
 切换用户会卸载旧聊天页面、断开旧流连接，重新加载新用户的数据。
 
 会话列表从后端分页读取，支持按标题查找。新对话在第一次发送消息时登记到服务器，
 默认标题取第一条消息的前 24 个字符；改名也保存到服务器。
 发送消息（包括追问表单回答）、读取历史、加载更早消息和查询运行记录都会带上 `user_id`。
+前端 API 请求同时携带 `Authorization: Bearer <token>`；填写设备指纹时，附加
+`X-Device-Fingerprint` 请求头。当前入口仅收集、透传公司凭据，不调用新的登录验证接口。
 
 ## 追问卡片
 
@@ -97,13 +103,14 @@ npm install
 `backend/static` 已纳入版本管理，同事拉取代码后启动后端，即可通过后端端口访问页面，
 无需先安装前端依赖或构建。修改前端后，重新执行 `npm run build`，将源码与更新后的静态文件一起提交。
 
-开发和构建方式的浏览器地址不同，需要各自输入用户 ID；相同用户能读取同一后端的会话。
+开发和构建方式的浏览器地址不同，需要各自填写登录信息；相同用户能读取同一后端的会话。
 
 ## 文件位置
 
 | 文件 | 作用 |
 | --- | --- |
-| `src/App.jsx` | 聊天页面、消息渲染和会话管理 |
+| `src/App.jsx` | 聊天页面和会话管理 |
+| `src/components/MarkdownMessage.jsx` | AI 回复的 Markdown 渲染，含 GFM 表格 |
 | `src/hooks/useChat.js` | 聊天请求、历史同步和运行状态 |
 | `src/api/client.js` | 携带用户 ID 的会话、消息、运行接口及 SSE 读取 |
 | `src/lib/messages.js` | 消息格式转换和增量合并 |
@@ -112,7 +119,7 @@ npm install
 | `src/lib/humanInput.js` | 追问协议和历史回答状态 |
 | `src/Icons.jsx` | 页面小图标 |
 | `src/styles.css` | 页面样式 |
-| `src/components/Login.jsx` | 用户 ID 登录入口 |
+| `src/components/Login.jsx` | 用户 ID、Token 和设备指纹输入 |
 | `src/storage.js` | 当前用户、按用户区分的本机偏好，不保存消息内容 |
 | `src/assets/company-logo.svg` | 公司原始 SVG Logo |
 | `vite.config.js` | 开发端口、接口代理和构建位置 |
