@@ -2,7 +2,7 @@
 deerflow/runtime/runs/manager.py（最小版）。
 
 deer-flow 把 RunRecord 和 RunManager 放在同一个文件里：manager 负责创建 record、
-改状态、把状态落库。这里 RunRecord 最小字段已就位，RunManager 负责「内存注册表
+改状态、保存用量合计。这里 RunRecord 最小字段已就位，RunManager 负责「内存注册表
 + 落库两件事」；准入控制（create_or_reject）、lease 等还属后面复杂化的范围。
 """
 
@@ -46,15 +46,15 @@ class RunRecord:
 
     所以除了 task，status / error / metadata 这些字段两边都有 ——
     不是漏了去重，而是两边都得能回答「这个 run 现在怎么样了」。
-    同步由 RunManager 负责：创建时先写库再写内存，改状态时先改内存再写库；
+    同步由 RunManager 负责：创建时先写库再写内存，改状态和用量时先改内存再写库；
     写入方只有 RunManager 一个，业务代码不许直接碰 store。
 
     这条「两份拷贝」的设计照搬 deer-flow（那边的 _runs 还多挂 start_lock /
     abort_event 等句柄，并且 get() 在内存查不到时会从库里回填）。
 
-    目前只放 run_agent 主线和 RunManager.set_status 真正用到的字段，其余
+    目前只放 run 的基础信息和用量合计，其余
     等需要时再补（deer-flow 的完整版还有 on_disconnect、operation_kind、
-    token 统计、start_lock、abort_event、ownership_lost 等，都属后面复杂化的范围）。
+    start_lock、abort_event、ownership_lost 等，都属后面复杂化的范围）。
     """
 
     run_id: str
@@ -63,6 +63,12 @@ class RunRecord:
     status: RunStatus = RunStatus.pending          # 生命周期状态，RunManager 会改它
     error: str | None = None                       # 出错时的描述，success 时为 None
     metadata: dict[str, Any] = field(default_factory=dict)  # 前端需要的附加信息
+
+    # 本次 run 的用量合计，由 Journal 统计，收尾时交给 RunManager 保存。
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_tokens: int = 0
+    llm_call_count: int = 0
 
     # 后台正在跑这次 run 的 asyncio.Task：services.start_run 用 create_task 塞进来。
     # 挂在 record 上是为了「别被垃圾回收」，以后要取消 run 也能直接 record.task.cancel()。
@@ -79,7 +85,7 @@ class RunManager:
         self._store     持久化，重启后还能查到（postgres 或内存版）
 
     所有内存变更都过一把 asyncio.Lock（和 deer-flow 一样「所有 mutation 都受锁保护」）。
-    最小版三件事：登记 run、查 run、改状态；每次改都同步写一份到 store。
+    最小版负责登记 run、查 run、改状态和保存用量；每次改都同步写一份到 store。
     """
 
     def __init__(self, store: RunStore | None = None) -> None:
@@ -163,7 +169,7 @@ class RunManager:
 
         数据来源各取所长：
             时间戳等字段      ← store（内存的 RunRecord 里没有这些）
-            status/error/metadata ← 内存优先（内存是最新真相，库里可能慢一次写入）
+            状态、错误、附加信息和用量 ← 内存优先（库里可能慢一次写入）
 
         user_id 不为 None 时按归属过滤（对不上返回 None，HTTP 层据此报 404）。
 
@@ -179,6 +185,10 @@ class RunManager:
             row["error"] = live.error
             row["metadata"] = dict(live.metadata)
             row["user_id"] = live.user_id
+            row["total_input_tokens"] = live.total_input_tokens
+            row["total_output_tokens"] = live.total_output_tokens
+            row["total_tokens"] = live.total_tokens
+            row["llm_call_count"] = live.llm_call_count
         if user_id is not None and row.get("user_id") != user_id:
             return None
         return row
@@ -196,6 +206,20 @@ class RunManager:
         """
         return await self._store.list_by_thread(
             thread_id, user_id=user_id, limit=limit
+        )
+
+    async def aggregate_tokens_by_thread(
+        self,
+        thread_id: str,
+        *,
+        user_id: str | None = None,
+    ) -> dict[str, int]:
+        """给路由提供会话用量查询入口，筛选和求和交给 Store。
+
+        不从 self._runs 累加：数据库模式下，重启前的运行记录也需要统计。
+        """
+        return await self._store.aggregate_tokens_by_thread(
+            thread_id, user_id=user_id
         )
 
     async def _persist_status(
@@ -257,3 +281,38 @@ class RunManager:
                 record.error = error
         await self._persist_status(run_id, status, error=error)
         logger.info("Run %s -> %s", run_id, status.value)
+
+    async def update_run_completion(
+        self,
+        run_id: str,
+        *,
+        total_input_tokens: int,
+        total_output_tokens: int,
+        total_tokens: int,
+        llm_call_count: int,
+    ) -> None:
+        """接收 Worker 传来的用量合计，先更新内存记录，再交给 Store 保存。
+
+        直接赋值，不再次累加，也不改变运行状态。
+        存储失败只记日志，内存保留合计，不影响 Worker 继续收尾。
+        """
+        async with self._lock:
+            record = self._runs.get(run_id)
+            if record is None:
+                logger.warning("update_run_completion: run %s 不存在，跳过", run_id)
+                return
+            record.total_input_tokens = total_input_tokens
+            record.total_output_tokens = total_output_tokens
+            record.total_tokens = total_tokens
+            record.llm_call_count = llm_call_count
+
+        try:
+            await self._store.update_run_completion(
+                run_id,
+                total_input_tokens=total_input_tokens,
+                total_output_tokens=total_output_tokens,
+                total_tokens=total_tokens,
+                llm_call_count=llm_call_count,
+            )
+        except Exception:
+            logger.warning("run %s 用量落库失败（内存已更新）", run_id, exc_info=True)

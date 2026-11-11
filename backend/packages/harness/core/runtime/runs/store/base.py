@@ -1,15 +1,19 @@
 """RunStore 抽象接口 —— 对应 deer-flow 的
 deerflow/runtime/runs/store/base.py（最小版）。
 
-它只负责一件事：把「一次 run 的记录」存起来，并能按 id 读回来、改状态。
+它只负责一件事：保存和查询「一次 run 的记录」，包括状态和用量合计。
 不关心 run 怎么跑，也不关心谁调用它。
 
 deer-flow 的 RunStore 有十几个方法（put / get / list / claim / release / lease…），
-最小版只留 3 个，刚好覆盖 RunManager 现在的全部动作：
+最小版保留以下方法：
 
     put            新建一个 run（已存在则覆盖，幂等）
     get            按 run_id 查一条
+    list_by_thread 查询会话下的 run 列表
+    aggregate_tokens_by_thread 汇总会话下已结束 run 的用量
     update_status  改状态 / 记错误
+    update_run_completion 保存 run 收尾时的用量合计
+    fail_inflight  服务启动时清理未结束的 run
 
 两条约定（memory 版和 db 版必须一致）：
 1. put() 之后，get() 必须能查到；
@@ -25,6 +29,10 @@ deer-flow 的 RunStore 有十几个方法（put / get / list / claim / release /
                               pending / running / success / error / timeout / interrupted
     error       str | None    出错时的描述；成功、运行中都是 None
     metadata    dict          前端附加信息，没传就是 {}
+    total_input_tokens  int   累计输入 Token，初始为 0
+    total_output_tokens int   累计输出 Token，初始为 0
+    total_tokens        int   累计总 Token，初始为 0
+    llm_call_count      int   取得有效用量的模型调用次数，初始为 0
     created_at  str           创建时间，ISO 8601 字符串
     updated_at  str           最后修改时间，ISO 8601 字符串
 
@@ -77,6 +85,21 @@ class RunStore(abc.ABC):
         """
 
     @abc.abstractmethod
+    async def aggregate_tokens_by_thread(
+        self,
+        thread_id: str,
+        *,
+        user_id: str | None = None,
+    ) -> dict[str, int]:
+        """汇总一个会话下已结束 run 的用量，不受 run 列表分页限制。
+
+        包含 success / error / timeout / interrupted，失败或取消前的消耗也要算。
+        user_id 不为 None 时，只汇总该用户的 run。
+        返回 total_input_tokens、total_output_tokens、total_tokens、
+        llm_call_count 和 total_runs；没有符合条件的记录时，五项都返回 0。
+        """
+
+    @abc.abstractmethod
     async def update_status(
         self,
         run_id: str,
@@ -89,6 +112,24 @@ class RunStore(abc.ABC):
         - error 为 None 时不动原来的 error 列（只改状态）
         - run_id 不存在时静默返回（打一条 warning），不抛异常
           —— 对应 deer-flow「找不到就跳过」的处理，避免后台任务把服务器带崩
+        """
+
+    @abc.abstractmethod
+    async def update_run_completion(
+        self,
+        run_id: str,
+        *,
+        total_input_tokens: int,
+        total_output_tokens: int,
+        total_tokens: int,
+        llm_call_count: int,
+    ) -> None:
+        """保存本次 run 的用量合计，由 RunManager 在收尾时调用。
+
+        四个用量参数来自 Journal.get_completion_data()，都必须传入。
+        直接覆盖已存的合计，不再次累加；重复保存同一份结果不会翻倍。
+        只更新用量和 updated_at，不改变 status / error。
+        run_id 不存在时记 warning 并返回，与 update_status 一致。
         """
 
     @abc.abstractmethod

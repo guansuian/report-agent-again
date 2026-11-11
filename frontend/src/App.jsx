@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Icon, IconSprite } from './Icons.jsx';
 import companyLogo from './assets/company-logo.svg';
 import { useChat } from './hooks/useChat.js';
 import { groupMessagesForDisplay, isActive, STATUS_LABELS } from './lib/messages.js';
 import { RunHistory } from './components/RunHistory.jsx';
+import { TokenUsageIndicator } from './components/TokenUsageIndicator.jsx';
 import { ClarificationCard } from './components/ClarificationCard.jsx';
 import { MarkdownMessage } from './components/MarkdownMessage.jsx';
 import { clarificationOf, clarificationState } from './lib/humanInput.js';
 import { Login } from './components/Login.jsx';
 import { loadLogin, saveLogin } from './storage.js';
+
+// 打开用量页面时才加载 ECharts，聊天页不必提前下载图表代码。
+const RunUsagePage = lazy(() => import('./components/RunUsagePage.jsx').then(module => ({ default: module.RunUsagePage })));
 
 function Avatar({ user = false }) {
   return user
@@ -115,12 +119,25 @@ function OpenSession({ onOpen }) {
 
 export default function App() {
   const [identity, setIdentity] = useState(loadLogin);
+  const [pageHash, setPageHash] = useState(() => window.location.hash);
+  useEffect(() => {
+    const changePage = () => setPageHash(window.location.hash);
+    window.addEventListener('hashchange', changePage);
+    return () => window.removeEventListener('hashchange', changePage);
+  }, []);
   function login(values) { setIdentity(saveLogin(values)); }
   function logout() { saveLogin(null); setIdentity(null); }
-  return identity ? <ChatPage key={identity.userId} userId={identity.userId} onLogout={logout} /> : <Login onLogin={login} />;
+  const usageThreadId = pageHash.match(/^#\/threads\/([\w-]{1,64})\/token-usage$/)?.[1];
+  if (!identity) return <Login onLogin={login} />;
+  return <>
+    <IconSprite />
+    {/* 切换用量页面时保留聊天页，避免中断正在接收的回复和丢失输入。 */}
+    <div hidden={Boolean(usageThreadId)}><ChatPage key={identity.userId} userId={identity.userId} active={!usageThreadId} onLogout={logout} /></div>
+    {usageThreadId && <Suspense fallback={<div className="run-usage-page"><div className="usage-page-loading" role="status">正在加载用量页面…</div></div>}><RunUsagePage key={`${identity.userId}:${usageThreadId}`} threadId={usageThreadId} userId={identity.userId} onBack={() => { window.location.hash = ''; }} onLogout={logout} /></Suspense>}
+  </>;
 }
 
-function ChatPage({ userId, onLogout }) {
+function ChatPage({ userId, active, onLogout }) {
   const [query, setQuery] = useState('');
   const [input, setInput] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -173,12 +190,11 @@ function ChatPage({ userId, onLogout }) {
   function create() { chat.create(); setQuery(''); inputRef.current.focus(); }
   const openDialog = type => setDialog({ type });
   return <>
-    <IconSprite />
     <Header userId={userId} onLogout={onLogout} sidebarOpen={sidebarOpen} onMenu={() => setSidebarOpen(!sidebarOpen)} onHome={() => { followEnd.current = true; conversation.current.scrollTop = conversation.current.scrollHeight; }} onDialog={openDialog} />
     <div className="sidebar-shade" onClick={() => setSidebarOpen(false)} />
     <Sidebar chat={chat} query={query} onQuery={setQuery} onSelect={chat.select} onNew={create} onManage={item => setDialog({ type: 'manage', session: item })} onOpen={() => openDialog('open')} onHelp={() => openDialog('help')} />
     <main className="workspace" aria-label="AI 对话工作台">
-      <div className="conversation-header"><div><h1>{session.title}</h1><span className={`status-badge ${busy ? 'running' : !error && humanInput.openRequest ? 'waiting' : view.run?.status || ''}`}>{busy ? '正在生成' : view.loading ? '正在同步' : !error && humanInput.openRequest ? '等待补充信息' : STATUS_LABELS[view.run?.status] || '准备就绪'}</span></div><button className="text-button" onClick={() => void copy(session.id, '已复制会话 ID')}><Icon name="copy" /><span>会话 ID</span></button></div>
+      <div className="conversation-header"><div className="conversation-title"><h1>{session.title}</h1><span className={`status-badge ${busy ? 'running' : !error && humanInput.openRequest ? 'waiting' : view.run?.status || ''}`}>{busy ? '正在生成' : view.loading ? '正在同步' : !error && humanInput.openRequest ? '等待补充信息' : STATUS_LABELS[view.run?.status] || '准备就绪'}</span></div><div className="conversation-actions"><TokenUsageIndicator key={session.id} threadId={session.id} userId={userId} draft={session.draft} busy={busy} active={active} onShowRuns={() => { window.location.hash = `/threads/${encodeURIComponent(session.id)}/token-usage`; }} /><button className="text-button session-id-button" onClick={() => void copy(session.id, '已复制会话 ID')}><Icon name="copy" /><span>会话 ID</span></button></div></div>
       <div ref={conversation} className="conversation" role="region" aria-label="聊天记录" tabIndex="0" onScroll={() => { const region = conversation.current; followEnd.current = region.scrollHeight - region.scrollTop - region.clientHeight < 100; }}><div className="conversation-inner">
         {view.hasMore && <div className="load-older"><button className="text-button" disabled={view.paging || busy} onClick={() => { olderScroll.current = { top: conversation.current.scrollTop, height: conversation.current.scrollHeight }; void chat.loadOlder(); }}>{view.paging ? '正在加载…' : '加载更早的消息'}</button></div>}
         {view.loading && !messages.length ? <div className="loading-history"><span className="spinner" />正在读取聊天记录…</div> : <Messages key={session.id} messages={messages} busy={disabled} onPrompt={send} onCopy={copy} onAnswer={answer} humanInput={humanInput} />}

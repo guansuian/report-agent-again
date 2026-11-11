@@ -19,7 +19,7 @@
 | 钩子 | 抓什么 | 事件 |
 | ---- | ------ | ---- |
 | on_chat_model_start | 第一条用户消息 | llm.human.input |
-| on_llm_end | 模型回答 + 记住本轮工具调用 | llm.ai.response |
+| on_llm_end | 模型回答 + 累计 Token 用量 + 记住本轮工具调用 | llm.ai.response |
 | on_tool_end | 工具结果（工具真跑时） | llm.tool.result |
 | on_chain_end | 根图收尾，补写中间件短路漏掉的工具结果 | llm.tool.result |
 
@@ -30,7 +30,9 @@ _should_reconcile_tool_message 注释）：中间件可能自己回答一个工�
 on_chain_end 在根图收尾时，用 on_llm_end 记下的「本轮工具调用名单」把这类
 漏写的 ToolMessage 捞出来补写。
 
-以后要复杂化（token 统计、latency、caller 区分、证据封存等）时，在对应钩子里加
+Token 合计由 get_completion_data() 提供给 worker，后续交给 RunManager 保存。
+
+以后要复杂化（latency、caller 区分、证据封存等）时，在对应钩子里加
 逻辑、往 metadata 里塞字段即可，写库主链不用动。
 """
 
@@ -87,6 +89,12 @@ class RunJournal(BaseCallbackHandler):
         # 只抓第一条用户消息，后续 on_chat_model_start 不再重复。
         self._first_human_message_captured = False
 
+        # 本次业务 run 的用量合计；每个 Journal 各自统计，从 0 开始。
+        self._total_input_tokens = 0
+        self._total_output_tokens = 0
+        self._total_tokens = 0
+        self._llm_call_count = 0
+
         # 本轮模型发起过哪些工具调用：tool_call_id -> 工具名。
         # on_llm_end 记，on_chain_end 用它把「本轮新造但 on_tool_end 没写到」的
         # 工具结果从整条历史里筛出来（中间件短路场景，如 ask_clarification）。
@@ -142,7 +150,7 @@ class RunJournal(BaseCallbackHandler):
         tags: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
-        """抓模型回答。response.generations 里每条 ChatGeneration 带一个 message。"""
+        """抓模型回答，并累计每次回调返回的 Token 用量。"""
         if self._closed:
             return
         for generation in response.generations:
@@ -154,6 +162,19 @@ class RunJournal(BaseCallbackHandler):
                 self._remember_current_run_tool_calls(message)
                 usage = getattr(message, "usage_metadata", None)
                 usage_dict = deepcopy(dict(usage)) if usage else {}
+
+                input_tokens = usage_dict.get("input_tokens", 0) or 0
+                output_tokens = usage_dict.get("output_tokens", 0) or 0
+                total_tokens = usage_dict.get("total_tokens", 0) or 0
+                if total_tokens == 0:
+                    total_tokens = input_tokens + output_tokens
+                # 只累计有用量的调用；当前最小实现不按模型调用 ID 去重。
+                if total_tokens > 0:
+                    self._total_input_tokens += input_tokens
+                    self._total_output_tokens += output_tokens
+                    self._total_tokens += total_tokens
+                    self._llm_call_count += 1
+
                 self._put(
                     event_type=LLM_AI_RESPONSE_EVENT.event_type,
                     category=LLM_AI_RESPONSE_EVENT.category,
@@ -453,6 +474,18 @@ class RunJournal(BaseCallbackHandler):
     # ------------------------------------------------------------------
     # 对外方法（run_agent 的 finally 里调用）
     # ------------------------------------------------------------------
+
+    def get_completion_data(self) -> dict[str, int]:
+        """返回本次 run 的用量合计；只读取，不清零，也不负责写库。
+
+        llm_call_count 只包含取得有效用量的模型调用；没有用量不代表没有消耗。
+        """
+        return {
+            "total_input_tokens": self._total_input_tokens,
+            "total_output_tokens": self._total_output_tokens,
+            "total_tokens": self._total_tokens,
+            "llm_call_count": self._llm_call_count,
+        }
 
     async def flush(self) -> None:
         """强制写掉剩余 buffer。run_agent 的 finally 里调用。"""

@@ -7,7 +7,7 @@
     ③ 启动闸门：try_start 把 pending 切成 running（不是 pending 就别跑）
     ④ 建 agent + 把 journal 挂成 callback + 挂 checkpointer
     ⑤ 流式跑图：每个 chunk 推给 bridge
-    ⑥ 收尾：更新 run 结果 → 关闭 journal → 同步会话状态 → 发 end
+    ⑥ 收尾：更新 run 结果 → 关闭 journal → 保存用量合计 → 同步会话状态 → 发 end
 
 关键点（对齐 deer-flow）：
 - 收尾的 journal.close() 放在 try/finally 里，保证无论跑图成功 / 抛异常 /
@@ -15,6 +15,7 @@
 - flush 在 set_status 之前：先把事件落库，再标终态，避免「终态已写、事件
   却还在 buffer」的窗口。
 - close() 内部还会再 flush 一次，但此时 buffer 已空，是空操作（幂等）。
+- 用量合计在 finally 里保存，成功、报错和取消都走这里；未获准开跑的 run 不更新用量。
 """
 
 from __future__ import annotations
@@ -173,9 +174,15 @@ async def run_agent(
                     logger.warning(
                         "Failed to close journal for run %s", record.run_id, exc_info=True
                     )
-            # 只同步真正开跑过的 run；未获准执行的 run 不改会话状态。
-            # 直接从 run 结果推导，避免另外维护一份 final_thread_status。
+            # 未获准开跑的 run 不覆盖已有用量和会话状态。
             if started:
+                # Journal 关闭后仍保留合计；取出来交给 Manager 统一保存。
+                if journal is not None:
+                    completion_data = journal.get_completion_data()
+                    await run_manager.update_run_completion(
+                        record.run_id, **completion_data
+                    )
+                # 直接从 run 结果推导，避免另外维护一份 final_thread_status。
                 status = "idle" if record.status == RunStatus.success else record.status.value
                 await _update_thread_status(ctx, record.thread_id, status)
         finally:

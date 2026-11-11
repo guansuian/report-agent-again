@@ -7,6 +7,13 @@ export function IconSprite() {
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 8a9 9 0 1 0 1 8M20 3v5h-5"/></symbol>
+    <symbol id="i-coins" viewBox="0 0 24 24"><ellipse cx="9" cy="6" rx="6" ry="3"/><path d="M3 6v5c0 1.7 2.7 3 6 3m6-8v4M3 11v5c0 1.7 2.7 3 6 3"/><ellipse cx="16" cy="13" rx="5" ry="2.5"/><path d="M11 13v5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-5"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M7 14l4-5 4 3 5-7"/></symbol>
+    <symbol id="i-input" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M3 12h12m-4-4 4 4-4 4"/></symbol>
+    <symbol id="i-output" viewBox="0 0 24 24"><path d="M9 4H4v16h5m0-8h12m-4-4 4 4-4 4"/></symbol>
+    <symbol id="i-model" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4M18 9h4m-4 6h4"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="5" y="6" width="12" height="15" rx="1"/><path d="M9 3h11v15M8 9h6"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="m21 3-6 18-4-8-8-4 18-6ZM11 13l5-5"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="m6 8 6 5 6-5"/></symbol>

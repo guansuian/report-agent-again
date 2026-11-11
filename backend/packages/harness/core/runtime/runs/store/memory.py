@@ -11,6 +11,10 @@ deerflow/runtime/runs/store/memory.py（最小版）。
             "status": "success",
             "error": None,
             "metadata": {},
+            "total_input_tokens": 2500,
+            "total_output_tokens": 400,
+            "total_tokens": 2900,
+            "llm_call_count": 2,
             "created_at": "2026-11-07T10:00:00+00:00",
             "updated_at": "2026-11-07T10:00:03+00:00",
         },
@@ -70,6 +74,11 @@ class MemoryRunStore(RunStore):
             "error": error,
             # 深拷贝：调用方之后改传入的 dict，不能影响已存的记录
             "metadata": deepcopy(metadata) if metadata is not None else {},
+            # 新建时用量为 0；覆盖已有记录时保留合计，与数据库版一致。
+            "total_input_tokens": existing["total_input_tokens"] if existing else 0,
+            "total_output_tokens": existing["total_output_tokens"] if existing else 0,
+            "total_tokens": existing["total_tokens"] if existing else 0,
+            "llm_call_count": existing["llm_call_count"] if existing else 0,
             # 覆盖写时保留原来的创建时间（upsert 语义：created_at 只有第一次算数）
             "created_at": existing["created_at"] if existing else now,
             "updated_at": now,
@@ -99,6 +108,36 @@ class MemoryRunStore(RunStore):
         rows.sort(key=lambda r: r["created_at"], reverse=True)
         return [deepcopy(r) for r in rows[:limit]]
 
+    async def aggregate_tokens_by_thread(
+        self,
+        thread_id: str,
+        *,
+        user_id: str | None = None,
+    ) -> dict[str, int]:
+        """遍历内存记录，汇总指定会话下已结束 run 的用量，不分页。"""
+        totals = {
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_tokens": 0,
+            "llm_call_count": 0,
+            "total_runs": 0,
+        }
+        for record in self._rows.values():
+            # 跳过其他会话、其他用户，以及尚未结束的运行。
+            if record["thread_id"] != thread_id:
+                continue
+            if user_id is not None and record["user_id"] != user_id:
+                continue
+            if record["status"] not in ("success", "error", "timeout", "interrupted"):
+                continue
+
+            totals["total_input_tokens"] += record["total_input_tokens"]
+            totals["total_output_tokens"] += record["total_output_tokens"]
+            totals["total_tokens"] += record["total_tokens"]
+            totals["llm_call_count"] += record["llm_call_count"]
+            totals["total_runs"] += 1
+        return totals
+
     async def update_status(
         self,
         run_id: str,
@@ -115,6 +154,28 @@ class MemoryRunStore(RunStore):
         record["status"] = str(status)
         if error is not None:
             record["error"] = error
+        record["updated_at"] = datetime.now(UTC).isoformat()
+
+    async def update_run_completion(
+        self,
+        run_id: str,
+        *,
+        total_input_tokens: int,
+        total_output_tokens: int,
+        total_tokens: int,
+        llm_call_count: int,
+    ) -> None:
+        """按 run_id 覆盖保存用量合计，不修改状态和错误信息。"""
+        record = self._rows.get(run_id)
+        if record is None:
+            logger.warning("update_run_completion: run %s 不存在，跳过", run_id)
+            return
+
+        # Journal 已经累计好了，这里直接赋值，不再相加。
+        record["total_input_tokens"] = total_input_tokens
+        record["total_output_tokens"] = total_output_tokens
+        record["total_tokens"] = total_tokens
+        record["llm_call_count"] = llm_call_count
         record["updated_at"] = datetime.now(UTC).isoformat()
 
     async def fail_inflight(self, error: str) -> int:

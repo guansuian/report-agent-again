@@ -48,8 +48,11 @@ export const listThreads = (userId, { offset = 0, signal } = {}) => getJSON(
 export const listMessages = (threadId, { userId, before, signal } = {}) => getJSON(
   `/api/threads/${encodeURIComponent(threadId)}/messages?${query(userId, { limit: 50, ...(before ? { before_seq: before } : {}) })}`, signal, userId,
 );
-export const listRuns = (threadId, userId, signal) => getJSON(`/api/threads/${encodeURIComponent(threadId)}/runs?${query(userId, { limit: 50 })}`, signal, userId);
+export const listRuns = (threadId, userId, signal, { limit = 50 } = {}) => getJSON(`/api/threads/${encodeURIComponent(threadId)}/runs?${query(userId, { limit })}`, signal, userId);
 export const getRun = (runId, userId, signal) => getJSON(`/api/runs/${encodeURIComponent(runId)}?${query(userId)}`, signal, userId);
+export const getThreadTokenUsage = (threadId, userId, signal) => getJSON(
+  `/api/threads/${encodeURIComponent(threadId)}/token-usage?${query(userId)}`, signal, userId,
+);
 
 export async function getThread(threadId, userId, signal) {
   userId = normalizeUserId(userId);

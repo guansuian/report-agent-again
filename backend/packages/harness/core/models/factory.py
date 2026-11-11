@@ -43,6 +43,9 @@ def create_chat_model(
     if model_config is None:
         raise ValueError(f"Model {name!r} not found in config")
 
+    # 默认请求流式 Token 用量；调用方传了 stream_usage 时，保留传入的值。
+    kwargs.setdefault("stream_usage", True)
+
     return ChatOpenAI(
         model=name,
         api_key=model_config.api_key,

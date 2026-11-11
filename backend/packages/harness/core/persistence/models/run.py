@@ -2,10 +2,10 @@
 deerflow/persistence/run/model.py（最小版）。
 
 一张表：
-    runs —— 一次 run 的记录（谁在跑、跑成没、报了什么错）
+    runs —— 一次 run 的记录（谁在跑、跑成没、报了什么错、用了多少 Token）
 
 deer-flow 的 RunRow 有 40+ 列（幂等键、租约、token 统计、证据封存……），
-最小版只留 RunRecord 里真正用到的 5 个字段 + 2 个时间戳：
+最小版保留基础信息、用量合计和时间戳：
 
     run_id        主键，一次 run 的唯一标识
     thread_id     属于哪个会话（按它查「这个会话跑过几次」）
@@ -13,6 +13,10 @@ deer-flow 的 RunRow 有 40+ 列（幂等键、租约、token 统计、证据封
     status        生命周期状态，取值见 RunStatus（pending/running/success/...）
     error         出错时的描述，成功时为 NULL
     metadata_json 前端需要的附加信息（JSON，随便塞）
+    total_input_tokens  本次 run 的累计输入 Token
+    total_output_tokens 本次 run 的累计输出 Token
+    total_tokens        本次 run 的累计总 Token
+    llm_call_count      本次 run 中取得有效用量的模型调用次数
     created_at    创建时间
     updated_at    最后修改时间（改状态时自动刷新）
 
@@ -54,6 +58,13 @@ class RunRow(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 前端附加信息，如 {"assistant_id": "..."}。默认空对象，读的时候不用判 None。
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # 本次 run 的用量合计，初始为 0；用于保存 Journal 累计出的结果。
+    total_input_tokens: Mapped[int] = mapped_column(default=0)
+    total_output_tokens: Mapped[int] = mapped_column(default=0)
+    total_tokens: Mapped[int] = mapped_column(default=0)
+    llm_call_count: Mapped[int] = mapped_column(default=0)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

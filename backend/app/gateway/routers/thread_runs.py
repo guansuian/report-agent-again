@@ -1,11 +1,12 @@
 """run 相关的 HTTP 路由 —— 对应 deer-flow 的 app/gateway/routers/thread_runs.py（最小版）。
 
 deer-flow 这个文件有 1923 行、几十个接口（runs 列表 / wait / join / cancel ...）。
-这里只留跑通主线的一个：
+最小版提供流式运行、消息历史、run 查询和会话用量汇总。其中：
 
     POST /api/threads/{thread_id}/runs/stream
+    GET  /api/threads/{thread_id}/token-usage
 
-职责只有三件事：收请求 → 交给 start_run → 把 SSE 流交回去。
+职责只有三件事：收请求 → 调用服务或管理器 → 返回 SSE 或 JSON。
 业务逻辑一律不写在这里。
 
 路径怎么读：
@@ -103,6 +104,23 @@ async def list_thread_runs(
     return await get_run_manager(request).list_by_thread(
         thread_id, limit=limit, user_id=user_id
     )
+
+
+@router.get("/{thread_id}/token-usage")
+async def thread_token_usage(
+    thread_id: str,
+    request: Request,
+    user_id: str | None = Query(default=None, max_length=64),
+) -> dict:
+    """返回当前会话已结束 run 的 Token 合计及运行次数。
+
+    前端打开会话、运行结束后调用；传入 user_id 时只汇总该用户的记录。
+    没有符合条件的运行记录时，五项统计值均为 0。
+    """
+    usage = await get_run_manager(request).aggregate_tokens_by_thread(
+        thread_id, user_id=user_id
+    )
+    return {"thread_id": thread_id, **usage}
 
 
 @runs_router.get("/{run_id}")

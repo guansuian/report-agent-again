@@ -9,7 +9,7 @@ deerflow/persistence/run/sql.py 里的 RunRepository（最小版）。
 注入的 store 就行，不用改一行代码。
 
 deer-flow 的 RunRepository 有 1151 行（幂等键、租约、change_seq、证据封存…），
-最小版只留 3 个方法：put / get / update_status。
+最小版保留 run 的创建、查询、状态和用量更新，以及启动清账。
 
 关键点：
 1. put 是 upsert，不是纯 INSERT：
@@ -17,7 +17,8 @@ deer-flow 的 RunRepository 有 1151 行（幂等键、租约、change_seq、证
    为什么：上层失败重试会重复 put，纯 INSERT 会撞主键报错。
    对应 deer-flow sql.py:194-200 的写法。
 2. 覆盖写时不动 created_at —— 创建时间只有第一次算数。
-3. updated_at 由 model 的 onupdate 自动刷新，这里不用手写。
+3. 状态更新时 updated_at 由 model 的 onupdate 自动刷新；用量保存时显式更新，
+   保证重复保存相同合计也会记录保存时间。
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.persistence.models.run import RunRow
@@ -138,6 +139,31 @@ class DbRunStore(RunStore):
                     row.error = error
                 # updated_at 由 model 的 onupdate 自动刷新
 
+    async def update_run_completion(
+        self,
+        run_id: str,
+        *,
+        total_input_tokens: int,
+        total_output_tokens: int,
+        total_tokens: int,
+        llm_call_count: int,
+    ) -> None:
+        """按 run_id 覆盖保存用量合计，不修改状态和错误信息。"""
+        async with self._sf() as session:
+            async with session.begin():
+                row = await session.get(RunRow, run_id)
+                if row is None:
+                    logger.warning("update_run_completion: run %s 不存在，跳过", run_id)
+                    return
+
+                # Journal 已经累计好了，这里直接赋值，不再相加。
+                row.total_input_tokens = total_input_tokens
+                row.total_output_tokens = total_output_tokens
+                row.total_tokens = total_tokens
+                row.llm_call_count = llm_call_count
+                # 即使用量与上次相同，也记录这次保存的时间。
+                row.updated_at = datetime.now(UTC)
+
     # ------------------------------------------------------------------
     # 读
     # ------------------------------------------------------------------
@@ -163,6 +189,32 @@ class DbRunStore(RunStore):
                 stmt.order_by(RunRow.created_at.desc()).limit(limit)
             )
             return [self._row_to_dict(row) for row in result.scalars()]
+
+    async def aggregate_tokens_by_thread(
+        self,
+        thread_id: str,
+        *,
+        user_id: str | None = None,
+    ) -> dict[str, int]:
+        """由数据库汇总会话下已结束 run 的用量，不加载完整记录、不分页。"""
+        # SUM 在没有记录时返回 NULL，coalesce(..., 0) 将它变成 0。
+        stmt = select(
+            func.coalesce(func.sum(RunRow.total_input_tokens), 0).label("total_input_tokens"),
+            func.coalesce(func.sum(RunRow.total_output_tokens), 0).label("total_output_tokens"),
+            func.coalesce(func.sum(RunRow.total_tokens), 0).label("total_tokens"),
+            func.coalesce(func.sum(RunRow.llm_call_count), 0).label("llm_call_count"),
+            func.count(RunRow.run_id).label("total_runs"),
+        ).where(
+            RunRow.thread_id == thread_id,
+            RunRow.status.in_(("success", "error", "timeout", "interrupted")),
+        )
+        if user_id is not None:
+            stmt = stmt.where(RunRow.user_id == user_id)
+
+        async with self._sf() as session:
+            result = await session.execute(stmt)
+            # 五项合计只有一行；按 label 定义的字段名转成字典返回。
+            return dict(result.mappings().one())
 
     # ------------------------------------------------------------------
     # 启动清账
