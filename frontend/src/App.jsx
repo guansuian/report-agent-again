@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, IconSprite } from './Icons.jsx';
 import companyLogo from './assets/company-logo.svg';
 import { useChat } from './hooks/useChat.js';
@@ -10,8 +10,11 @@ import { MarkdownMessage } from './components/MarkdownMessage.jsx';
 import { clarificationOf, clarificationState } from './lib/humanInput.js';
 import { Login } from './components/Login.jsx';
 import { loadLogin, saveLogin } from './storage.js';
+import { reportOf } from './lib/reportArtifacts.js';
+import { ReportCard } from './components/ReportCard.jsx';
+import { ReportPanel } from './components/ReportPanel.jsx';
 
-// 打开用量页面时才加载 ECharts，聊天页不必提前下载图表代码。
+// 用量页面和报表图表按需加载。
 const RunUsagePage = lazy(() => import('./components/RunUsagePage.jsx').then(module => ({ default: module.RunUsagePage })));
 
 function Avatar({ user = false }) {
@@ -53,19 +56,21 @@ function Sidebar({ chat, query, onQuery, onSelect, onNew, onManage, onOpen, onHe
   </aside>;
 }
 
-function Messages({ messages, busy, onPrompt, onCopy, onAnswer, humanInput }) {
+function Messages({ messages, busy, onPrompt, onCopy, onAnswer, humanInput, reports, selectedReportId, onReport }) {
   if (!messages.length) return <div className="welcome"><Avatar /><div className="welcome-eyebrow">让数据为你的工作提供答案</div><h1>你好，今天想了解什么？</h1><p>查询销售额、用户增长或订单情况，从一个问题开始。</p><div className="welcome-prompts">{['查询本月销售额', '本月新增用户有多少？', '查看本月订单情况'].map(text => <button disabled={busy} key={text} onClick={() => onPrompt(text)}><Icon name="arrow" />{text}</button>)}</div></div>;
   // 同批包含追问时，中间件已经丢弃其他调用，不展示过滤前的工具名称。
   const toolCallsOf = message => message.toolCalls?.some(call => call.name === 'ask_clarification') ? [] : message.toolCalls || [];
   return groupMessagesForDisplay(messages).map(group => {
     if (group.role === 'user') return <article className="message user" key={group.id}><div className="bubble">{group.messages[0].text}</div><Avatar user /></article>;
-    const visibleMessages = group.messages.filter(message => clarificationOf(message) || message.text || toolCallsOf(message).length);
+    const visibleMessages = group.messages.filter(message => clarificationOf(message) || reports.some(report => report.id === message.id) || message.text || toolCallsOf(message).length);
     if (!visibleMessages.length) return null;
     const replyText = visibleMessages.filter(message => message.role === 'assistant' && message.text).map(message => message.text).join('\n\n');
     return <article className="message assistant assistant-turn" aria-label="AI 回复" key={group.id}><Avatar /><div className="message-body">
       {visibleMessages.map(message => {
         const request = clarificationOf(message);
         if (request) return <ClarificationCard key={message.id} request={request} answer={humanInput.answers.get(request.request_id)} active={humanInput.openRequest?.request_id === request.request_id} disabled={busy} onAnswer={onAnswer} />;
+        const report = reports.find(item => item.id === message.id);
+        if (report) return <ReportCard key={message.id} report={report} selected={report.id === selectedReportId} onOpen={onReport} />;
         if (message.role === 'tool') return <details className="tool-result" key={message.id}><summary>{message.name === 'query_report' ? '报表查询结果' : message.name || '工具结果'}<span>展开查看</span></summary><pre>{message.text}</pre></details>;
         const visibleCalls = toolCallsOf(message);
         return <div className="assistant-part" key={message.id}>
@@ -143,6 +148,8 @@ function ChatPage({ userId, active, onLogout }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [notice, setNotice] = useState('');
+  const [reportSelection, setReportSelection] = useState(null);
+  const observedReport = useRef({ threadId: null, id: null });
   const toastTimer = useRef(null);
   const conversation = useRef(null);
   const inputRef = useRef(null);
@@ -153,6 +160,10 @@ function ChatPage({ userId, active, onLogout }) {
   const { catalog, view, streamingThread } = chat;
   const session = catalog.sessions.find(item => item.id === catalog.activeId);
   const messages = view.messages || [];
+  const reports = useMemo(() => messages.map(reportOf).filter(Boolean), [messages]);
+  const newestReportId = reports.at(-1)?.id;
+  const reportPanelOpen = reportSelection?.threadId === session.id && reportSelection.open && reports.length > 0;
+  const selectedReportId = reportPanelOpen ? reportSelection.id : null;
   const humanInput = clarificationState(messages);
   const busy = isActive(view.run?.status) || streamingThread === session.id;
   const disabled = busy || Boolean(streamingThread) || Boolean(view.loading) || !view.loaded || Boolean(view.error && !view.loaded);
@@ -166,6 +177,13 @@ function ChatPage({ userId, active, onLogout }) {
     return () => { document.body.classList.remove('sidebar-open'); document.removeEventListener('keydown', close); };
   }, [sidebarOpen]);
   useEffect(() => { followEnd.current = true; setInput(''); setSidebarOpen(false); }, [session.id]);
+  // 只在出现新报表时自动打开；后续文字更新不会反复打开已关闭的面板。
+  useEffect(() => {
+    const previous = observedReport.current;
+    if (previous.threadId === session.id && previous.id === newestReportId) return;
+    observedReport.current = { threadId: session.id, id: newestReportId };
+    setReportSelection(newestReportId ? { threadId: session.id, id: newestReportId, open: true } : null);
+  }, [session.id, newestReportId]);
   useEffect(() => {
     const region = conversation.current;
     if (olderScroll.current) { region.scrollTop = olderScroll.current.top + region.scrollHeight - olderScroll.current.height; olderScroll.current = null; }
@@ -188,20 +206,37 @@ function ChatPage({ userId, active, onLogout }) {
     return chat.send(response.value, response);
   }
   function create() { chat.create(); setQuery(''); inputRef.current.focus(); }
+  function toggleReport(id) {
+    setReportSelection(previous => {
+      const alreadyExpanded = previous?.threadId === session.id && previous.open && previous.id === id;
+      return { threadId: session.id, id: alreadyExpanded ? null : id, open: true };
+    });
+  }
+  function toggleReportPanel() {
+    setReportSelection(previous => previous?.threadId === session.id
+      ? { ...previous, open: !previous.open }
+      : { threadId: session.id, id: newestReportId, open: true });
+  }
+  function questionReport(report) {
+    setInput(`关于「${report.title}」，我想了解：`);
+    inputRef.current.focus();
+  }
   const openDialog = type => setDialog({ type });
   return <>
     <Header userId={userId} onLogout={onLogout} sidebarOpen={sidebarOpen} onMenu={() => setSidebarOpen(!sidebarOpen)} onHome={() => { followEnd.current = true; conversation.current.scrollTop = conversation.current.scrollHeight; }} onDialog={openDialog} />
     <div className="sidebar-shade" onClick={() => setSidebarOpen(false)} />
     <Sidebar chat={chat} query={query} onQuery={setQuery} onSelect={chat.select} onNew={create} onManage={item => setDialog({ type: 'manage', session: item })} onOpen={() => openDialog('open')} onHelp={() => openDialog('help')} />
     <main className="workspace" aria-label="AI 对话工作台">
-      <div className="conversation-header"><div className="conversation-title"><h1>{session.title}</h1><span className={`status-badge ${busy ? 'running' : !error && humanInput.openRequest ? 'waiting' : view.run?.status || ''}`}>{busy ? '正在生成' : view.loading ? '正在同步' : !error && humanInput.openRequest ? '等待补充信息' : STATUS_LABELS[view.run?.status] || '准备就绪'}</span></div><div className="conversation-actions"><TokenUsageIndicator key={session.id} threadId={session.id} userId={userId} draft={session.draft} busy={busy} active={active} onShowRuns={() => { window.location.hash = `/threads/${encodeURIComponent(session.id)}/token-usage`; }} /><button className="text-button session-id-button" onClick={() => void copy(session.id, '已复制会话 ID')}><Icon name="copy" /><span>会话 ID</span></button></div></div>
+      <div className="conversation-header"><div className="conversation-title"><h1>{session.title}</h1><span className={`status-badge ${busy ? 'running' : !error && humanInput.openRequest ? 'waiting' : view.run?.status || ''}`}>{busy ? '正在生成' : view.loading ? '正在同步' : !error && humanInput.openRequest ? '等待补充信息' : STATUS_LABELS[view.run?.status] || '准备就绪'}</span></div><div className="conversation-actions">{!!reports.length && <button type="button" className="text-button reports-toggle" aria-expanded={Boolean(reportPanelOpen)} onClick={toggleReportPanel}><Icon name="chart" />报表 {reports.length}</button>}<TokenUsageIndicator key={session.id} threadId={session.id} userId={userId} draft={session.draft} busy={busy} active={active} onShowRuns={() => { window.location.hash = `/threads/${encodeURIComponent(session.id)}/token-usage`; }} /><button className="text-button session-id-button" onClick={() => void copy(session.id, '已复制会话 ID')}><Icon name="copy" /><span>会话 ID</span></button></div></div>
+      <div className={`workspace-content${reportPanelOpen ? ' with-report' : ''}`}><div className="chat-column">
       <div ref={conversation} className="conversation" role="region" aria-label="聊天记录" tabIndex="0" onScroll={() => { const region = conversation.current; followEnd.current = region.scrollHeight - region.scrollTop - region.clientHeight < 100; }}><div className="conversation-inner">
         {view.hasMore && <div className="load-older"><button className="text-button" disabled={view.paging || busy} onClick={() => { olderScroll.current = { top: conversation.current.scrollTop, height: conversation.current.scrollHeight }; void chat.loadOlder(); }}>{view.paging ? '正在加载…' : '加载更早的消息'}</button></div>}
-        {view.loading && !messages.length ? <div className="loading-history"><span className="spinner" />正在读取聊天记录…</div> : <Messages key={session.id} messages={messages} busy={disabled} onPrompt={send} onCopy={copy} onAnswer={answer} humanInput={humanInput} />}
+        {view.loading && !messages.length ? <div className="loading-history"><span className="spinner" />正在读取聊天记录…</div> : <Messages key={session.id} messages={messages} busy={disabled} onPrompt={send} onCopy={copy} onAnswer={answer} humanInput={humanInput} reports={reports} selectedReportId={selectedReportId} onReport={toggleReport} />}
         {busy && <div className="generation-status" role="status"><span className="thinking-dots"><i /><i /><i /></span>{streamingThread === session.id ? '正在思考并生成回复…' : '任务仍在执行，正在同步消息…'}</div>}
         {error && <div className="chat-error" role="alert"><p>{error}</p><div><button className="text-button" onClick={chat.refresh}><Icon name="refresh" />重新同步</button><button className="text-button" onClick={() => openDialog('tasks')}>查看任务记录</button></div></div>}
       </div></div>
       <Composer value={input} onChange={setInput} busy={busy} disabled={disabled} waiting={Boolean(humanInput.openRequest)} onSend={() => void send()} onTasks={() => openDialog('tasks')} inputRef={inputRef} />
+      </div>{!!reports.length && <div className="report-panel-shell" inert={!reportPanelOpen}><ReportPanel key={session.id} reports={reports} selectedId={reportSelection?.threadId === session.id ? reportSelection.id : null} onSelect={toggleReport} onClose={() => setReportSelection(previous => ({ ...previous, open: false }))} onQuestion={questionReport} active={active && Boolean(reportPanelOpen)} /></div>}</div>
     </main>
     <div className={`toast${notice ? ' visible' : ''}`} role="status">{notice}</div>
     {dialog && <Modal key={dialog.session?.id || dialog.type} title={({ manage: '管理对话', open: '打开已有会话', tasks: '任务记录', help: '帮助中心', messages: '消息中心', profile: '个人中心' })[dialog.type]} wide={dialog.type === 'tasks'} onClose={() => setDialog(null)}>

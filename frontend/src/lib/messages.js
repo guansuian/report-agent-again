@@ -7,8 +7,12 @@ export function textOf(content) {
 export function normalizeMessage(message, fallbackId, extra = {}) {
   const type = message.type || message.role;
   const role = type === 'human' || type === 'user' ? 'user' : type === 'tool' ? 'tool' : 'assistant';
+  // 工具结果落库时可能还没有 message id，进入图状态后才由框架补上。
+  // tool_call_id 在这两个阶段保持一致，用它避免旧结果被当成新消息追加。
+  const id = role === 'tool' && message.tool_call_id
+    ? `tool:${message.tool_call_id}` : message.id || fallbackId;
   return {
-    id: message.id || fallbackId, role, text: textOf(message.content),
+    id, role, text: textOf(message.content),
     name: message.name, toolCalls: message.tool_calls || [], pending: false, ...extra,
     artifact: message.artifact, additionalKwargs: message.additional_kwargs || {},
   };

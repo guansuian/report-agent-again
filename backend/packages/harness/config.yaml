@@ -28,7 +28,16 @@ database:
   postgres_url: $DATABASE_URL
 
 memory_enabled: true
-summarization_enabled: true
 token_usage_enabled: true
 loop_detection_enabled: true
 token_budget_enabled: false
+summarization:
+  enabled: true
+  trigger_tokens: 200
+  keep_messages: 4
+  max_input_tokens: 16000
+  max_output_tokens: 1000
+
+tool_artifacts:
+  enabled: true
+  max_entries: 100

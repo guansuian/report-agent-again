@@ -11,6 +11,7 @@ export function IconSprite() {
     <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
     <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></symbol>
     <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 4v16h16M7 14l4-5 4 3 5-7"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/></symbol>
     <symbol id="i-input" viewBox="0 0 24 24"><path d="M14 4h5v16h-5M3 12h12m-4-4 4 4-4 4"/></symbol>
     <symbol id="i-output" viewBox="0 0 24 24"><path d="M9 4H4v16h5m0-8h12m-4-4 4 4-4 4"/></symbol>
     <symbol id="i-model" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="3"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4M18 9h4m-4 6h4"/></symbol>

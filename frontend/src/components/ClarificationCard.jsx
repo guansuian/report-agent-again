@@ -1,4 +1,8 @@
 import { useId, useState } from 'react';
+import { ConfigProvider, DatePicker } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
+import dayjs from 'dayjs';
+import 'dayjs/locale/zh-cn';
 import { Icon } from '../Icons.jsx';
 import {
   buildFormSubmissionValue, buildFormSummary, buildInitialFormValues,
@@ -6,11 +10,18 @@ import {
 } from '../lib/humanInput.js';
 
 // 单个表单字段的输入控件。checkbox 由调用方单独渲染（它的 label 布局不一样）。
-// 6 种类型：text / textarea / number / select / multi_select / checkbox。
+// 7 种类型：text / textarea / number / select / multi_select / checkbox / date。
 function FormFieldInput({ field, value, disabled, id, onChange }) {
   const stringValue = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
   if (field.type === 'textarea') {
     return <textarea id={id} rows="2" placeholder={field.placeholder} value={stringValue} disabled={disabled} onChange={event => onChange(event.target.value)} />;
+  }
+  if (field.type === 'date') {
+    // DatePicker 使用 dayjs 对象显示日期；提交仍使用 YYYY-MM-DD 字符串。
+    const selectedDate = stringValue ? dayjs(stringValue) : null;
+    return <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#8b7ad2', borderRadius: 10, fontSize: 13 } }}>
+      <DatePicker id={id} className="clarification-date-picker" value={selectedDate} format="YYYY-MM-DD" placeholder={field.placeholder || '请选择日期'} disabled={disabled} onChange={(_, dateString) => onChange(dateString)} />
+    </ConfigProvider>;
   }
   if (field.type === 'select') {
     return <select id={id} value={stringValue} disabled={disabled} onChange={event => onChange(event.target.value)}>

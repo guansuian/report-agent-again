@@ -21,6 +21,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.config.company_config import CompanyConfig
+from core.config.summarization_config import SummarizationConfig
+from core.config.tool_artifact_config import ToolArtifactConfig
 
 logger = logging.getLogger(__name__)
 
@@ -111,14 +113,14 @@ class AppConfig(BaseModel):
     authorization: AuthorizationConfig = Field(default_factory=AuthorizationConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     company: CompanyConfig = Field(default_factory=CompanyConfig)
+    summarization: SummarizationConfig = Field(default_factory=SummarizationConfig)
+    tool_artifacts: ToolArtifactConfig = Field(default_factory=ToolArtifactConfig)
 
     # 下面这些布尔开关，在真实实现里分别对应一个独立配置文件的 ``.enabled`` 字段
     memory_enabled: bool = True
-    summarization_enabled: bool = True
     token_usage_enabled: bool = True
     loop_detection_enabled: bool = True
     token_budget_enabled: bool = False
-
 
     def get_model_config(self, name: str | None) -> ModelConfig | None:
         for m in self.models:

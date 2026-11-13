@@ -21,6 +21,7 @@ from core.tools.common.params import (
     StartDate,
     TimeUnit,
 )
+from core.tools.common.regions import get_region_tree
 from core.tools.common.species_names import (
     SPECIES_BY_CODE,
     SPECIES_CODES,
@@ -52,4 +53,5 @@ __all__ = [
     "validate_sex",
     "check_regions",
     "check_device_ids",
+    "get_region_tree",
 ]

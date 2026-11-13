@@ -1,7 +1,7 @@
 """工具参数层测试。
 
 覆盖 common/ 里的共享类型、蚊种闭集、语义校验、report_tool 装饰器，
-以及 species_trend 工具的 schema 与时间标签校验。
+以及 species_compose 工具的 schema 与时间标签校验。
 
 对应真实 deer-flow 里用「扫描测试」守护工具参数约定的思路
 （见 test_tool_args_schema_no_pydantic_warning.py），但这里是对每个
@@ -29,7 +29,7 @@ from core.tools.common import (
     report_tool,
     validate_sex,
 )
-from core.tools.report.species_trend import _point_order, species_trend
+from core.tools.report.species_compose import _point_order, species_compose
 
 
 # ---------------------------------------------------------------------------
@@ -78,15 +78,55 @@ def test_validate_sex_rejects_invalid():
         validate_sex("both")
 
 
-def test_check_regions_strips_and_drops_none():
-    assert check_regions(province=" 浙江 ", city="杭州") == {"province": "浙江", "city": "杭州"}
-    assert check_regions() == {}
-    assert check_regions(district=None) == {}
+# 只保留定位要用到的字段，模拟 /api/v1/agent/regions 返回的树。
+_REGION_TREE = [
+    {
+        "level": "province", "name": "浙江省", "code": "浙江", "children": [
+            {"level": "city", "name": "杭州市", "code": "杭州", "children": [
+                {"level": "district", "name": "西湖区", "code": "杭州西湖", "children": []},
+            ]},
+        ],
+    },
+    {
+        "level": "province", "name": "江西省", "code": "江西", "children": [
+            {"level": "city", "name": "南昌市", "code": "南昌", "children": [
+                {"level": "district", "name": "西湖区", "code": "南昌西湖", "children": []},
+            ]},
+        ],
+    },
+    {
+        "level": "province", "name": "北京市", "code": "北京", "children": [
+            {"level": "district", "name": "朝阳区", "code": "北京朝阳", "children": []},
+        ],
+    },
+]
 
 
-def test_check_regions_rejects_blank():
+def test_check_regions_strips_and_fills_parent():
+    # 输入带空格也能定位，返回父级补全后的接口参数。
+    assert check_regions(_REGION_TREE, province=" 浙江省 ", city="杭州市") == {
+        "province": "浙江省",
+        "city": "杭州市",
+    }
+    # 只给区县时，城市由树补出。
+    assert check_regions(_REGION_TREE, district="西湖区", province="浙江省") == {
+        "province": "浙江省",
+        "city": "杭州市",
+        "district": "西湖区",
+    }
+    # 直辖市没有 city 层，重复填写的 city 被忽略。
+    assert check_regions(_REGION_TREE, province="北京市", city="北京市", district="朝阳区") == {
+        "province": "北京市",
+        "district": "朝阳区",
+    }
+
+
+def test_check_regions_rejects_blank_and_ambiguous():
     with pytest.raises(ToolInputError):
-        check_regions(city="   ")
+        check_regions(_REGION_TREE, city="   ")
+    # 西湖区在树里出现两次，不给上级无法确定。
+    with pytest.raises(ToolInputError):
+        check_regions(_REGION_TREE, district="西湖区")
 
 
 def test_check_device_ids_passthrough():
@@ -162,11 +202,11 @@ def test_device_ids_alias_constraints():
 
 
 # ---------------------------------------------------------------------------
-# species_trend 的 schema 与时间标签校验
+# species_compose 的 schema 与时间标签校验
 # ---------------------------------------------------------------------------
 
-def test_species_trend_schema_shape():
-    schema = species_trend.args_schema
+def test_species_compose_schema_shape():
+    schema = species_compose.args_schema
     assert list(schema.model_fields) == [
         "start_time",
         "end_time",
@@ -182,8 +222,8 @@ def test_species_trend_schema_shape():
     assert schema.model_config.get("extra") == "forbid"
 
 
-def test_species_trend_rejects_undeclared_and_bad_enum():
-    schema = species_trend.args_schema
+def test_species_compose_rejects_undeclared_and_bad_enum():
+    schema = species_compose.args_schema
     base = {"start_time": date(2026, 1, 1), "end_time": date(2026, 1, 3)}
     with pytest.raises(ValidationError):
         schema.model_validate({**base, "oops": 1})

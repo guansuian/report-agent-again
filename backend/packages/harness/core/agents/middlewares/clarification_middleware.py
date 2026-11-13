@@ -52,8 +52,7 @@ logger = logging.getLogger(__name__)
 ASK_CLARIFICATION_TOOL_NAME = "ask_clarification"
 
 # 表单字段类型白名单；模型传了别的类型就降级成 text，不会画出渲染不了的卡片。
-# 最小版省掉 date（前端暂时没这个控件需求）。
-FORM_FIELD_TYPES = frozenset({"text", "textarea", "number", "select", "multi_select", "checkbox"})
+FORM_FIELD_TYPES = frozenset({"text", "textarea", "number", "select", "multi_select", "checkbox", "date"})
 # 需要带 options 的字段类型：select/multi_select 没有选项就降级成 text。
 _OPTION_FIELD_TYPES = frozenset({"select", "multi_select"})
 

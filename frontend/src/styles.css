@@ -331,8 +331,9 @@ button:disabled { opacity:.55; }
 .clarification-field { display:flex; flex-direction:column; gap:6px; }
 .clarification-field-label { font-size:12px; color:#8090a8; }
 .required-star { color:#d05a6a; font-style:normal; margin-left:3px; }
-.clarification-form input[type="text"], .clarification-form input[type="number"], .clarification-form select { display:block; width:100%; border:1px solid #dfe6f3; border-radius:10px; padding:10px 12px; background:#fcfdff; color:#53627d; font:inherit; font-size:13px; line-height:1.7; }
-.clarification-form input[type="text"]:focus, .clarification-form input[type="number"]:focus, .clarification-form select:focus { outline:2px solid #c6bdf5; outline-offset:2px; }
+.clarification-form .clarification-field>input[type="text"], .clarification-form .clarification-field>input[type="number"], .clarification-form select { display:block; width:100%; border:1px solid #dfe6f3; border-radius:10px; padding:10px 12px; background:#fcfdff; color:#53627d; font:inherit; font-size:13px; line-height:1.7; }
+.clarification-form .clarification-field>input[type="text"]:focus, .clarification-form .clarification-field>input[type="number"]:focus, .clarification-form select:focus { outline:2px solid #c6bdf5; outline-offset:2px; }
+.clarification-date-picker.ant-picker { width:100%; min-height:44px; border-color:#dfe6f3; background:#fcfdff; }
 .clarification-multi-select { display:flex; flex-wrap:wrap; gap:8px; }
 .multi-option { padding:8px 12px; border:1px solid #e1e7f3; border-radius:999px; background:#fafcff; color:#6a7a94; font-size:13px; cursor:pointer; }
 .multi-option:hover { background:#f4f3ff; border-color:#c9bff1; }
@@ -347,12 +348,12 @@ button:disabled { opacity:.55; }
 /* 独立运行用量页面：复用现有 API，图表每个点对应一次 run。 */
 .run-usage-page { position:fixed; inset:0; z-index:40; overflow:auto; background:radial-gradient(ellipse at 80% 0,#e9edff88,transparent 42%),#f5f7fc; color:#384963; }
 .usage-topbar { position:sticky; top:0; z-index:5; height:66px; display:flex; align-items:center; justify-content:space-between; padding:0 36px; background:#ffffffed; border-bottom:1px solid #e5eaf3; backdrop-filter:blur(12px); }
-.usage-topbar>a { display:flex; align-items:center; }
+.usage-nav>a { display:flex; align-items:center; }
 .usage-topbar>div { display:flex; align-items:center; gap:17px; }
 .usage-user { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#7c8ca7; font-size:12px; }
 .usage-page-content { width:min(1180px,calc(100% - 72px)); margin:0 auto; padding:25px 0 32px; }
-.usage-back { display:inline-flex; align-items:center; gap:7px; padding:5px 0; color:#8090ad; background:none; font-size:12px; }
-.usage-back:hover { color:#667ae0; }
+.usage-back { display:inline-flex; align-items:center; gap:7px; padding:8px 13px; border:1px solid #d6def3; border-radius:8px; color:#6172bc; background:#f2f5ff; font-size:13px; font-weight:500; }
+.usage-back:hover { color:#4c60b6; background:#e9eeff; border-color:#b6c3ea; }
 .usage-back>.icon { width:16px; height:16px; }
 .usage-page-heading { display:flex; align-items:center; justify-content:space-between; gap:20px; margin:18px 0 27px; }
 .usage-eyebrow { color:#929fbc; font-size:10px; font-weight:600; letter-spacing:2px; }

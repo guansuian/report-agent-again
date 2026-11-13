@@ -47,7 +47,7 @@ const RESERVED_FIELD_NAMES = new Set([
   '__defineGetter__', '__defineSetter__', '__lookupGetter__', '__lookupSetter__',
 ]);
 
-const FIELD_TYPES = new Set(['text', 'textarea', 'number', 'select', 'multi_select', 'checkbox']);
+const FIELD_TYPES = new Set(['text', 'textarea', 'number', 'select', 'multi_select', 'checkbox', 'date']);
 
 function isNonEmptyString(value) { return typeof value === 'string' && value.trim().length > 0; }
 

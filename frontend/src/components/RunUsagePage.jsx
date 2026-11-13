@@ -132,9 +132,8 @@ export function RunUsagePage({ threadId, userId, onBack, onLogout }) {
   function refresh() { setRefreshVersion(value => value + 1); }
 
   return <div className="run-usage-page">
-    <header className="usage-topbar"><a href="#" onClick={event => { event.preventDefault(); onBack(); }} aria-label="返回报表对话"><img src={companyLogo} alt="银河星尘" width="136" height="30" /></a><div><span className="usage-user">{userId}</span><button type="button" className="text-button" onClick={onLogout}>退出登录</button></div></header>
+    <header className="usage-topbar"><div className="usage-nav"><button type="button" className="usage-back" onClick={onBack}><Icon name="arrow-left" />返回对话</button><a href="#" onClick={event => { event.preventDefault(); onBack(); }} aria-label="返回报表对话"><img src={companyLogo} alt="银河星尘" width="136" height="30" /></a></div><div><span className="usage-user">{userId}</span><button type="button" className="text-button" onClick={onLogout}>退出登录</button></div></header>
     <main className="usage-page-content">
-      <button type="button" className="usage-back" onClick={onBack}><Icon name="arrow-left" />返回对话</button>
       <div className="usage-page-heading"><div><span className="usage-eyebrow">TOKEN USAGE</span><h1 ref={titleRef} tabIndex={-1}>运行用量分析</h1><p>{data?.thread.display_name || '当前会话'}<span className="usage-heading-divider">/</span>观察每次运行的 Token 消耗</p></div><button type="button" className="usage-refresh" disabled={loading} onClick={refresh}><Icon name="refresh" className={loading ? 'is-spinning' : ''} />{loading ? '正在同步' : '刷新数据'}</button></div>
       {error && <div className="usage-page-error" role="alert"><div><strong>{data ? '刷新失败，当前保留上次结果' : '无法加载运行用量'}</strong><p>{error}</p></div><button type="button" className="text-button" disabled={loading} onClick={refresh}>重试</button></div>}
       <div className="usage-overview-label"><h2>会话累计</h2><span>全部已结束运行 · {formatCount(data?.usage.total_runs)} 次</span></div>

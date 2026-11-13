@@ -18,8 +18,8 @@
 
 | 钩子 | 抓什么 | 事件 |
 | ---- | ------ | ---- |
-| on_chat_model_start | 第一条用户消息 | llm.human.input |
-| on_llm_end | 模型回答 + 累计 Token 用量 + 记住本轮工具调用 | llm.ai.response |
+| on_chat_model_start | 业务模型收到的第一条用户消息，跳过摘要调用和注入的摘要 | llm.human.input |
+| on_llm_end | 模型结果 + 累计 Token 用量；只有业务调用登记工具名单 | llm.ai.response / middleware:summarize |
 | on_tool_end | 工具结果（工具真跑时） | llm.tool.result |
 | on_chain_end | 根图收尾，补写中间件短路漏掉的工具结果 | llm.tool.result |
 
@@ -31,8 +31,10 @@ on_chain_end 在根图收尾时，用 on_llm_end 记下的「本轮工具调用�
 漏写的 ToolMessage 捞出来补写。
 
 Token 合计由 get_completion_data() 提供给 worker，后续交给 RunManager 保存。
+摘要结果归入 middleware 分类，普通回复归入 message 分类；两者都累计用量，
+但聊天历史只读取 message，所以摘要不会在刷新后变成一条 AI 回复。
 
-以后要复杂化（latency、caller 区分、证据封存等）时，在对应钩子里加
+以后要复杂化（latency、子 agent 来源区分、证据封存等）时，在对应钩子里加
 逻辑、往 metadata 里塞字段即可，写库主链不用动。
 """
 
@@ -52,6 +54,7 @@ from core.runtime.events.catalog import (
     LLM_AI_RESPONSE_EVENT,
     LLM_HUMAN_INPUT_EVENT,
     LLM_TOOL_RESULT_EVENT,
+    MIDDLEWARE_SUMMARIZE_EVENT,
 )
 from core.runtime.events.store.base import RunEventStore
 
@@ -118,7 +121,7 @@ class RunJournal(BaseCallbackHandler):
         metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        """抓本次 run 的用户消息。只在第一次模型调用时落一次。
+        """抓本次 run 的用户消息。只在第一次业务模型调用时落一次。
 
         调用时机：每次「真要向模型发一次请求」之前触发一次（不是按节点、
         不是按对话轮次，而是按模型调用次数）。
@@ -128,11 +131,17 @@ class RunJournal(BaseCallbackHandler):
         里。列表按时间正序排，所以「本次 run 的用户输入」在**最后**。
         正序会抓到第 1 轮的老问题，倒序才抓到本轮的新问题。
         """
+        # 摘要模型收到的是内部总结请求，不能把它误存成用户问题。
+        if MIDDLEWARE_SUMMARIZE_EVENT.event_type in (tags or []):
+            return
         if self._first_human_message_captured or not messages:
             return
         for batch in reversed(messages):
             for message in reversed(batch):
                 if isinstance(message, HumanMessage):
+                    # 只跳过注入的摘要；hide_from_ui 的表单答案仍然是用户输入。
+                    if message.additional_kwargs.get("context_summary") is True:
+                        continue
                     self._first_human_message_captured = True
                     self._put(
                         event_type=LLM_HUMAN_INPUT_EVENT.event_type,
@@ -150,16 +159,20 @@ class RunJournal(BaseCallbackHandler):
         tags: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
-        """抓模型回答，并累计每次回调返回的 Token 用量。"""
+        """区分业务回复和内部摘要，两种调用的 Token 都累计。"""
         if self._closed:
             return
+        is_summary_call = MIDDLEWARE_SUMMARIZE_EVENT.event_type in (tags or [])
+        response_event = MIDDLEWARE_SUMMARIZE_EVENT if is_summary_call else LLM_AI_RESPONSE_EVENT
+        caller = MIDDLEWARE_SUMMARIZE_EVENT.event_type if is_summary_call else "lead_agent"
         for generation in response.generations:
             for gen in generation:
                 message = getattr(gen, "message", None)
                 if message is None:
                     continue
-                # 记住本轮模型发起过哪些工具调用，供 on_chain_end 兜底用。
-                self._remember_current_run_tool_calls(message)
+                # 只有业务模型的工具调用才属于本轮执行名单。
+                if not is_summary_call:
+                    self._remember_current_run_tool_calls(message)
                 usage = getattr(message, "usage_metadata", None)
                 usage_dict = deepcopy(dict(usage)) if usage else {}
 
@@ -176,10 +189,10 @@ class RunJournal(BaseCallbackHandler):
                     self._llm_call_count += 1
 
                 self._put(
-                    event_type=LLM_AI_RESPONSE_EVENT.event_type,
-                    category=LLM_AI_RESPONSE_EVENT.category,
+                    event_type=response_event.event_type,
+                    category=response_event.category,
                     content=message.model_dump(),
-                    metadata={"usage": usage_dict},
+                    metadata={"usage": usage_dict, "caller": caller},
                 )
 
     def on_tool_end(
@@ -257,9 +270,8 @@ class RunJournal(BaseCallbackHandler):
     def _remember_current_run_tool_calls(self, message: Any) -> None:
         """把本轮 AI 消息里的 tool_call_id 记进名单。
 
-        照 deer-flow 的 _remember_current_run_tool_calls，但它只记 caller ==
-        "lead_agent" 的调用（避开 subagent）。我们最小版只有 lead_agent 一个
-        代理、没有 subagent，所以省掉 caller 判断，全部记下。
+        对齐 deer-flow 的业务调用登记。on_llm_end 已排除摘要调用；
+        当前没有子 agent，因此这里不再重复判断来源。
         """
         if not self._is_ai_message(message):
             return

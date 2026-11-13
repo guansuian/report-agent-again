@@ -40,7 +40,7 @@ class ClarificationFormField(TypedDict, total=False):
 
     name: Required[str]  # 字段唯一标识（不能用 constructor/toString 这类 JS 原型名）
     label: str           # 显示名，缺省用 name
-    type: Literal["text", "textarea", "number", "select", "multi_select", "checkbox"]
+    type: Literal["text", "textarea", "number", "select", "multi_select", "checkbox", "date"]
     required: bool       # 是否必填，默认 False
     options: list[str]   # select / multi_select 的候选项
     placeholder: str     # 输入框提示
@@ -67,6 +67,8 @@ def ask_clarification_tool(
     - 如果是「请用户选一个」，把候选放进 options，前端会画成按钮
     - 如果要一次收集多个值（比如好几个参数），用 fields 画成一个表单，别一个问题一个问题问
     - 如果要「多选」，用一个 type=multi_select 的字段，别塞进 options
+    - 收集日期时，使用 type=date，日期格式为 YYYY-MM-DD
+    - 查询时间范围时，只为缺少的日期提供字段：start_time（开始日期）、end_time（结束日期）
     - 调用本工具后本轮会立刻结束，等用户下一条消息再继续
 
     Args:
@@ -75,7 +77,7 @@ def ask_clarification_tool(
         context: 可选的补充说明，解释为什么要问，帮用户理解背景。
         options: 可选的候选项列表。只有「请用户选一个」时才填，最多 10 个。
         fields: 可选的表单字段定义，一次收集多个值。传了 fields 就优先用它，忽略 options。
-            每个字段是 {name(唯一标识), label(显示名), type(text/textarea/number/select/multi_select/checkbox),
+            每个字段是 {name(唯一标识), label(显示名), type(text/textarea/number/select/multi_select/checkbox/date),
             required(是否必填), options(select/multi_select 必填), placeholder(提示)}。
             最多 16 个字段、每字段 24 个选项、名字/标签/选项/占位符最多 200 字，超了会整体降级成纯文本问题。
     """

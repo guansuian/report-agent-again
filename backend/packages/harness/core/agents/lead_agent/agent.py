@@ -1,12 +1,16 @@
 import logging
 
 from langchain.agents import create_agent
+from langchain_core.language_models import BaseChatModel
 from langgraph.graph.state import CompiledStateGraph
 
 from core.agents.lead_agent.prompt import apply_prompt_template
+from core.agents.middlewares.artifact_capture_middleware import ArtifactCaptureMiddleware
 from core.agents.middlewares.clarification_middleware import ClarificationMiddleware
+from core.agents.middlewares.summarization_middleware import SummarizationMiddleware
 from core.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
 from core.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
+from core.agents.thread_state import ThreadState
 from core.config.app_config import AppConfig, get_app_config
 from core.models.factory import create_chat_model
 from core.tools import get_available_tools
@@ -37,11 +41,11 @@ def make_lead_agent(config: dict) -> CompiledStateGraph:
     # 5. 创建模型实例（装配内部一律 attach_tracing=False，避免重复 trace）
     model = create_chat_model(model_name, attach_tracing=False, app_config=app_config)
 
-    # 6. 收集工具（对应 deer-flow 的 get_available_tools，当前是 species_trend + ask_clarification）
+    # 6. 收集工具（对应 deer-flow 的 get_available_tools，当前是 species_compose + ask_clarification）
     tools = get_available_tools(app_config=app_config)
 
     # 7. 构建中间件链（对应 deer-flow 的 build_middlewares）
-    middlewares = build_middlewares(app_config)
+    middlewares = build_middlewares(app_config, model)
 
     # 8. 生成完整的系统提示词
     system_prompt = apply_prompt_template()
@@ -52,9 +56,10 @@ def make_lead_agent(config: dict) -> CompiledStateGraph:
         tools=tools,
         middleware=middlewares,
         system_prompt=system_prompt,
+        state_schema=ThreadState,
     )
 
-def build_middlewares(app_config: AppConfig) -> list:
+def build_middlewares(app_config: AppConfig, model: BaseChatModel) -> list:
     """构建中间件链 —— 对应真实 deer-flow 的 build_middlewares（最小版）。
 
     真实实现按「一个 if 一个 append」的模式，根据配置 / 运行时 / 能力开关
@@ -63,6 +68,12 @@ def build_middlewares(app_config: AppConfig) -> list:
     middlewares = [
         ToolErrorHandlingMiddleware(),   # 工具报错兜底：工具异常 → error ToolMessage，不崩
     ]
+    if app_config.tool_artifacts.enabled:
+        # 先登记工具产物，再压缩历史，避免工具消息被移除后无法提取。
+        middlewares.append(ArtifactCaptureMiddleware(app_config.tool_artifacts))
+    if app_config.summarization.enabled:
+        # 使用本次实际选中的模型生成摘要，不再创建另一个 lead_agent。
+        middlewares.append(SummarizationMiddleware(model, app_config.summarization))
     if app_config.token_usage_enabled:   # 配置开关：config.yaml 里的 token_usage_enabled
         middlewares.append(TokenUsageMiddleware())
     # 必须放最后（最内层，贴着工具层）：
