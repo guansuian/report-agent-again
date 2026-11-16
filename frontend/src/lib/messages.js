@@ -26,10 +26,22 @@ export function historyMessages(rows) {
   });
 }
 
+function messageIdentity(message) {
+  const id = message.id;
+  const userSuffix = '__user';
+  // 后端注入上下文后会把用户消息改为 X__user，比较时仍视为原来的 X。
+  // 只计算合并身份，不修改消息实际 ID。
+  if (message.role === 'user' && typeof id === 'string' && id.endsWith(userSuffix)) {
+    return id.slice(0, -userSuffix.length);
+  }
+  return id;
+}
+
 export function mergeMessages(previous, incoming) {
   const result = [...previous];
   for (const message of incoming) {
-    const index = result.findIndex(item => item.id === message.id);
+    const identity = messageIdentity(message);
+    const index = result.findIndex(item => messageIdentity(item) === identity);
     if (index < 0) result.push(message); else result[index] = { ...result[index], ...message };
   }
   return result;
@@ -56,7 +68,7 @@ export function groupMessagesForDisplay(messages) {
   return groups;
 }
 
-// values 是完整快照，messages 是增量。相同 message id 始终更新同一个气泡。
+// values 是完整快照，messages 是增量。同一消息身份始终更新同一个气泡。
 export function applyStreamEvent(previous, entry, runId) {
   if (entry.event === 'values' && Array.isArray(entry.data?.messages)) {
     const messages = entry.data.messages

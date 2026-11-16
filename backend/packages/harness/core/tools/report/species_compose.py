@@ -117,7 +117,9 @@ def _build_compose_chart(result: dict, chart_type: str) -> dict | None:
     query = result["query"]
     start = query["start_time"].split(" ")[0]
     end = query["end_time"].split(" ")[0]
-    display_name = f"{start}至{end} 蚊虫监测数量与种类构成"
+    monitor_type = query.get("monitor_type")
+    species_name = SPECIES_BY_CODE[monitor_type] if monitor_type is not None else "全部类别"
+    display_name = f"{start}至{end} {species_name}监测数量与种类构成"
     option = {"title": {"text": display_name}}
     if chart_type == "pie":
         option["tooltip"] = {"trigger": "item"}

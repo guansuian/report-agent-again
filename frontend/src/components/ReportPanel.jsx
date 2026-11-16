@@ -65,7 +65,7 @@ function ReportListItem({ report, number, expanded, onToggle, onQuestion, active
   return <section className={`report-list-item${expanded ? ' expanded' : ''}`}>
     <button ref={toggleButton} type="button" className="report-list-toggle" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle}>
       <span className="report-list-number">{String(number).padStart(2, '0')}</span>
-      <span className="report-list-label"><strong>{report.title}</strong><small>{report.query.time_unit ? '时间趋势' : '种类构成'} · {report.query.city || report.query.province || '当前账号可见范围'}</small></span>
+      <span className="report-list-label"><strong>{report.title}</strong><small>{report.query.time_unit ? '时间趋势' : '种类构成'} · {reportSubtitle(report)}</small></span>
       <Icon name="chevron-down" />
     </button>
     <div id={contentId} className="report-list-collapse" inert={!expanded} onTransitionEnd={event => {

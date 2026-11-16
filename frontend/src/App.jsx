@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Icon, IconSprite } from './Icons.jsx';
 import companyLogo from './assets/company-logo.svg';
 import { useChat } from './hooks/useChat.js';
+import { useRegions } from './hooks/useRegions.js';
 import { groupMessagesForDisplay, isActive, STATUS_LABELS } from './lib/messages.js';
 import { RunHistory } from './components/RunHistory.jsx';
 import { TokenUsageIndicator } from './components/TokenUsageIndicator.jsx';
@@ -13,13 +14,15 @@ import { loadLogin, saveLogin } from './storage.js';
 import { reportOf } from './lib/reportArtifacts.js';
 import { ReportCard } from './components/ReportCard.jsx';
 import { ReportPanel } from './components/ReportPanel.jsx';
+import { QuickInputCapsules } from './components/QuickInputCapsules.jsx';
 
-// 用量页面和报表图表按需加载。
+// 独立页面和报表图表按需加载。
 const RunUsagePage = lazy(() => import('./components/RunUsagePage.jsx').then(module => ({ default: module.RunUsagePage })));
+const UserManagementPage = lazy(() => import('./components/UserManagementPage.jsx').then(module => ({ default: module.UserManagementPage })));
 
 function Avatar({ user = false }) {
   return user
-    ? <div className="avatar user-avatar" aria-hidden="true"><span className="pig">🐷</span></div>
+    ? <div className="avatar user-avatar" aria-hidden="true"><Icon name="user" /></div>
     : <div className="avatar robot-avatar" aria-hidden="true"><span className="robot-antenna" /><span className="robot-head" /></div>;
 }
 
@@ -32,7 +35,7 @@ function Header({ sidebarOpen, onMenu, onHome, onDialog, userId, onLogout }) {
     <nav className="account-bar" aria-label="账户导航">
       <button className="account-button" onClick={() => onDialog('messages')}><Icon name="mail" /><span>消息中心</span></button>
       <span className="divider" />
-      <button className="account-button" onClick={() => onDialog('profile')} title={userId}><span className="profile-mini" aria-hidden="true">👩🏻‍🚀</span><span className="current-user">{userId}</span></button>
+      <button className="account-button" onClick={() => { window.location.hash = '/profile'; }} aria-label="打开用户管理" title={userId}><span className="profile-mini" aria-hidden="true"><Icon name="user" /></span><span className="current-user">{userId}</span></button>
       <button className="account-button" onClick={onLogout}>退出登录</button>
     </nav>
   </header>;
@@ -83,7 +86,7 @@ function Messages({ messages, busy, onPrompt, onCopy, onAnswer, humanInput, repo
   });
 }
 
-function Composer({ value, onChange, busy, disabled, onSend, onTasks, inputRef, waiting }) {
+function Composer({ value, onChange, busy, disabled, onSend, onTasks, inputRef, waiting, regions }) {
   useEffect(() => {
     const input = inputRef.current;
     input.style.height = 'auto';
@@ -94,7 +97,7 @@ function Composer({ value, onChange, busy, disabled, onSend, onTasks, inputRef, 
     <div className="composer-toolbar"><span className="composer-label"><span className="online-dot" />{busy ? '正在处理你的问题' : waiting ? '助手正在等你补充信息' : '报表助手'}</span><button className="toolbar-button" onClick={onTasks}><Icon name="task" />任务记录</button></div>
     <form className="composer" onSubmit={event => { event.preventDefault(); if (ready) onSend(); }}>
       <textarea ref={inputRef} placeholder={busy ? '可以先写下一个问题，等待当前回复完成…' : waiting ? '也可以在这里回答上面的问题…' : '您想咨询什么...'} aria-label="输入消息" rows="2" value={value} onChange={event => onChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (ready) onSend(); } }} />
-      <div className="composer-bottom"><span className="input-hint">Enter 发送 · Shift + Enter 换行</span><button type="submit" className={`send-button${ready ? ' ready' : ''}`} aria-label={busy ? '正在生成回复' : '发送消息'} disabled={!ready}>{busy ? <span className="spinner" /> : <Icon name="send" />}</button></div>
+      <div className="composer-bottom"><QuickInputCapsules inputRef={inputRef} value={value} onChange={onChange} regions={regions} /><div className="composer-send"><span className="input-hint">Enter 发送 · Shift + Enter 换行</span><button type="submit" className={`send-button${ready ? ' ready' : ''}`} aria-label={busy ? '正在生成回复' : '发送消息'} disabled={!ready}>{busy ? <span className="spinner" /> : <Icon name="send" />}</button></div></div>
     </form>
     <p className="composer-footnote">AI 生成内容仅供参考，请结合实际业务核对。</p>
   </section>;
@@ -133,12 +136,15 @@ export default function App() {
   function login(values) { setIdentity(saveLogin(values)); }
   function logout() { saveLogin(null); setIdentity(null); }
   const usageThreadId = pageHash.match(/^#\/threads\/([\w-]{1,64})\/token-usage$/)?.[1];
+  const profileOpen = pageHash === '#/profile';
+  const secondaryPageOpen = Boolean(usageThreadId) || profileOpen;
   if (!identity) return <Login onLogin={login} />;
   return <>
     <IconSprite />
-    {/* 切换用量页面时保留聊天页，避免中断正在接收的回复和丢失输入。 */}
-    <div hidden={Boolean(usageThreadId)}><ChatPage key={identity.userId} userId={identity.userId} active={!usageThreadId} onLogout={logout} /></div>
+    {/* 切换独立页面时保留聊天页，避免中断正在接收的回复和丢失输入。 */}
+    <div hidden={secondaryPageOpen}><ChatPage key={identity.userId} userId={identity.userId} active={!secondaryPageOpen} onLogout={logout} /></div>
     {usageThreadId && <Suspense fallback={<div className="run-usage-page"><div className="usage-page-loading" role="status">正在加载用量页面…</div></div>}><RunUsagePage key={`${identity.userId}:${usageThreadId}`} threadId={usageThreadId} userId={identity.userId} onBack={() => { window.location.hash = ''; }} onLogout={logout} /></Suspense>}
+    {profileOpen && <Suspense fallback={<div className="user-management-page"><div className="usage-page-loading" role="status">正在加载用户管理…</div></div>}><UserManagementPage key={identity.userId} userId={identity.userId} onBack={() => { window.location.hash = ''; }} onLogout={logout} /></Suspense>}
   </>;
 }
 
@@ -157,6 +163,7 @@ function ChatPage({ userId, active, onLogout }) {
   const olderScroll = useRef(null);
   const toast = useCallback(message => { clearTimeout(toastTimer.current); setNotice(message); toastTimer.current = setTimeout(() => setNotice(''), 3500); }, []);
   const chat = useChat(userId, toast);
+  const regions = useRegions(userId);
   const { catalog, view, streamingThread } = chat;
   const session = catalog.sessions.find(item => item.id === catalog.activeId);
   const messages = view.messages || [];
@@ -235,12 +242,12 @@ function ChatPage({ userId, active, onLogout }) {
         {busy && <div className="generation-status" role="status"><span className="thinking-dots"><i /><i /><i /></span>{streamingThread === session.id ? '正在思考并生成回复…' : '任务仍在执行，正在同步消息…'}</div>}
         {error && <div className="chat-error" role="alert"><p>{error}</p><div><button className="text-button" onClick={chat.refresh}><Icon name="refresh" />重新同步</button><button className="text-button" onClick={() => openDialog('tasks')}>查看任务记录</button></div></div>}
       </div></div>
-      <Composer value={input} onChange={setInput} busy={busy} disabled={disabled} waiting={Boolean(humanInput.openRequest)} onSend={() => void send()} onTasks={() => openDialog('tasks')} inputRef={inputRef} />
+      <Composer key={session.id} value={input} onChange={setInput} busy={busy} disabled={disabled} waiting={Boolean(humanInput.openRequest)} onSend={() => void send()} onTasks={() => openDialog('tasks')} inputRef={inputRef} regions={regions} />
       </div>{!!reports.length && <div className="report-panel-shell" inert={!reportPanelOpen}><ReportPanel key={session.id} reports={reports} selectedId={reportSelection?.threadId === session.id ? reportSelection.id : null} onSelect={toggleReport} onClose={() => setReportSelection(previous => ({ ...previous, open: false }))} onQuestion={questionReport} active={active && Boolean(reportPanelOpen)} /></div>}</div>
     </main>
     <div className={`toast${notice ? ' visible' : ''}`} role="status">{notice}</div>
-    {dialog && <Modal key={dialog.session?.id || dialog.type} title={({ manage: '管理对话', open: '打开已有会话', tasks: '任务记录', help: '帮助中心', messages: '消息中心', profile: '个人中心' })[dialog.type]} wide={dialog.type === 'tasks'} onClose={() => setDialog(null)}>
-      {dialog.type === 'tasks' ? <RunHistory threadId={session.id} userId={userId} /> : dialog.type === 'manage' ? <ManageSession session={dialog.session} onCopy={() => void copy(dialog.session.id, '已复制会话 ID')} onRename={async title => { const saved = await chat.rename(dialog.session.id, title); if (saved) setDialog(null); return saved; }} onRemove={() => { if (chat.remove(dialog.session.id)) { setDialog(null); toast('已移出本机列表，服务器记录保留。'); } }} /> : dialog.type === 'open' ? <OpenSession onOpen={async id => { const opened = await chat.open(id); if (opened) { setQuery(''); setDialog(null); } return opened; }} /> : dialog.type === 'help' ? <><p>输入问题，按 Enter 发送；Shift + Enter 换行。</p><p>会话列表、名称和聊天记录从服务器读取，重新登录相同的用户 ID 即可找回。</p><p>任务记录可以查看每次运行的状态和失败原因。</p><div className="dialog-note">当前暂不支持停止后台任务、上传附件和删除服务器记录。</div></> : dialog.type === 'profile' ? <><p>当前用户：<strong>{userId}</strong></p><button className="primary" onClick={onLogout}>退出登录</button></> : <p>暂无新通知。</p>}
+    {dialog && <Modal key={dialog.session?.id || dialog.type} title={({ manage: '管理对话', open: '打开已有会话', tasks: '任务记录', help: '帮助中心', messages: '消息中心' })[dialog.type]} wide={dialog.type === 'tasks'} onClose={() => setDialog(null)}>
+      {dialog.type === 'tasks' ? <RunHistory threadId={session.id} userId={userId} /> : dialog.type === 'manage' ? <ManageSession session={dialog.session} onCopy={() => void copy(dialog.session.id, '已复制会话 ID')} onRename={async title => { const saved = await chat.rename(dialog.session.id, title); if (saved) setDialog(null); return saved; }} onRemove={() => { if (chat.remove(dialog.session.id)) { setDialog(null); toast('已移出本机列表，服务器记录保留。'); } }} /> : dialog.type === 'open' ? <OpenSession onOpen={async id => { const opened = await chat.open(id); if (opened) { setQuery(''); setDialog(null); } return opened; }} /> : dialog.type === 'help' ? <><p>输入问题，按 Enter 发送；Shift + Enter 换行。</p><p>会话列表、名称和聊天记录从服务器读取，重新登录相同的用户 ID 即可找回。</p><p>任务记录可以查看每次运行的状态和失败原因。</p><div className="dialog-note">当前暂不支持停止后台任务、上传附件和删除服务器记录。</div></> : <p>暂无新通知。</p>}
     </Modal>}
   </>;
 }

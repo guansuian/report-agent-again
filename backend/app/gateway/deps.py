@@ -11,7 +11,9 @@ from typing import Any, Callable
 from fastapi import HTTPException, Request
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
+from core.agents.memory.manager import MemoryManager
 from core.clients import CompanyClient
+from core.config.app_config import get_app_config
 from core.persistence.thread_meta.base import ThreadMetaStore
 from core.runtime.events.store.base import RunEventStore
 from core.runtime.request_context import RequestUser
@@ -44,6 +46,8 @@ get_event_store: Callable[[Request], RunEventStore] = _require("event_store", "�
 get_checkpointer: Callable[[Request], BaseCheckpointSaver] = _require("checkpointer", "会话记忆")
 get_thread_store: Callable[[Request], ThreadMetaStore] = _require("thread_store", "会话存储")
 get_app_company_client: Callable[[Request], CompanyClient] = _require("company_client", "公司接口客户端")
+# 仅在长期记忆启用时取用；启用却未初始化仍然报 503，不静默跳过记忆。
+get_memory_manager: Callable[[Request], MemoryManager] = _require("memory_manager", "长期记忆管理器")
 
 
 def get_company_request_user(request: Request, *, user_id: str | None) -> RequestUser | None:
@@ -70,9 +74,14 @@ def get_run_context(request: Request) -> RunContext:
     对应 deer-flow 的 get_run_context（deps.py:1250）。checkpointer 从 app.state 拿，
     拿不到报 503 —— 宁可明确报错，也不要静默失去会话记忆。
     """
+    memory_manager = None
+    if get_app_config().memory.enabled:
+        memory_manager = get_memory_manager(request)
+
     return RunContext(
         checkpointer=get_checkpointer(request),
         event_store=get_event_store(request),
         thread_store=get_thread_store(request),
         company_client=get_app_company_client(request),
+        memory_manager=memory_manager,
     )

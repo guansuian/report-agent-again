@@ -5,8 +5,12 @@ from langchain_core.language_models import BaseChatModel
 from langgraph.graph.state import CompiledStateGraph
 
 from core.agents.lead_agent.prompt import apply_prompt_template
+from core.agents.memory.manager import MemoryManager
 from core.agents.middlewares.artifact_capture_middleware import ArtifactCaptureMiddleware
 from core.agents.middlewares.clarification_middleware import ClarificationMiddleware
+from core.agents.middlewares.durable_context_middleware import DurableContextMiddleware
+from core.agents.middlewares.dynamic_context_middleware import DynamicContextMiddleware
+from core.agents.middlewares.memory_middleware import MemoryMiddleware
 from core.agents.middlewares.summarization_middleware import SummarizationMiddleware
 from core.agents.middlewares.tool_error_handling_middleware import ToolErrorHandlingMiddleware
 from core.agents.middlewares.token_usage_middleware import TokenUsageMiddleware
@@ -18,7 +22,14 @@ from core.tools import get_available_tools
 logger = logging.getLogger(__name__)
 
 
-def make_lead_agent(config: dict) -> CompiledStateGraph:
+def make_lead_agent(
+    config: dict,
+    *,
+    memory_manager: MemoryManager | None = None,
+    user_id: str | None = None,
+    input_messages: list[dict[str, str]] | None = None,
+) -> CompiledStateGraph:
+    """装配智能体；记忆管理器、用户 ID 和本轮输入由 Worker 经工厂显式传入。"""
     # 1. 读取系统级配置
     app_config = get_app_config()
 
@@ -45,7 +56,13 @@ def make_lead_agent(config: dict) -> CompiledStateGraph:
     tools = get_available_tools(app_config=app_config)
 
     # 7. 构建中间件链（对应 deer-flow 的 build_middlewares）
-    middlewares = build_middlewares(app_config, model)
+    middlewares = build_middlewares(
+        app_config,
+        model,
+        memory_manager=memory_manager,
+        user_id=user_id,
+        input_messages=input_messages,
+    )
 
     # 8. 生成完整的系统提示词
     system_prompt = apply_prompt_template()
@@ -59,7 +76,14 @@ def make_lead_agent(config: dict) -> CompiledStateGraph:
         state_schema=ThreadState,
     )
 
-def build_middlewares(app_config: AppConfig, model: BaseChatModel) -> list:
+def build_middlewares(
+    app_config: AppConfig,
+    model: BaseChatModel,
+    *,
+    memory_manager: MemoryManager | None = None,
+    user_id: str | None = None,
+    input_messages: list[dict[str, str]] | None = None,
+) -> list:
     """构建中间件链 —— 对应真实 deer-flow 的 build_middlewares（最小版）。
 
     真实实现按「一个 if 一个 append」的模式，根据配置 / 运行时 / 能力开关
@@ -68,14 +92,38 @@ def build_middlewares(app_config: AppConfig, model: BaseChatModel) -> list:
     middlewares = [
         ToolErrorHandlingMiddleware(),   # 工具报错兜底：工具异常 → error ToolMessage，不崩
     ]
+    memory_writer = None
+    if app_config.memory.enabled:
+        if memory_manager is None or not user_id or not input_messages:
+            raise ValueError(
+                "启用长期记忆时，必须传入 memory_manager、user_id 和本轮 input_messages。"
+            )
+
+        # 本轮输入已由调用方整理为 role/content 格式，不从配置或历史中猜身份和问题。
+        # 多条用户输入合并成检索文字；写入时仍保留各条消息。
+        query_parts = []
+        for message in input_messages:
+            if message["role"] == "user":
+                query_parts.append(message["content"])
+        query = "\n".join(query_parts)
+
+        # 读取在 abefore_agent 执行，先把日期和记忆快照写入 State。
+        middlewares.append(DynamicContextMiddleware(memory_manager, user_id, query))
+        memory_writer = MemoryMiddleware(memory_manager, user_id, input_messages)
+
     if app_config.tool_artifacts.enabled:
         # 先登记工具产物，再压缩历史，避免工具消息被移除后无法提取。
         middlewares.append(ArtifactCaptureMiddleware(app_config.tool_artifacts))
+    # 始终挂载摘要注入；没有摘要时直接使用原请求。
+    middlewares.append(DurableContextMiddleware())
     if app_config.summarization.enabled:
         # 使用本次实际选中的模型生成摘要，不再创建另一个 lead_agent。
         middlewares.append(SummarizationMiddleware(model, app_config.summarization))
     if app_config.token_usage_enabled:   # 配置开关：config.yaml 里的 token_usage_enabled
         middlewares.append(TokenUsageMiddleware())
+    if memory_writer is not None:
+        # 写入在 aafter_agent 执行，只提交本轮用户输入和最终 AI 回答。
+        middlewares.append(memory_writer)
     # 必须放最后（最内层，贴着工具层）：
     #   - wrap_tool_call：要抢在工具执行前截住 ask_clarification
     #   - after_model：LangChain 的 after_model 是倒序跑的，放最后 = 模型一输出完它先看到，

@@ -42,6 +42,12 @@ async function requestJSON(path, options, userId) {
 }
 
 const query = (userId, parameters = {}) => new URLSearchParams({ user_id: normalizeUserId(userId), ...parameters }).toString();
+// userId 只用于核对当前登录身份，不放入地区接口的地址或请求体。
+export const listRegions = (userId, signal) => getJSON('/api/regions', signal, userId);
+// 记忆列表接口返回 { results: [{ id, memory, created_at, updated_at }] }。
+export const listMemories = (userId, signal) => getJSON(
+  `/api/memories?${query(userId)}`, signal, userId,
+);
 export const listThreads = (userId, { offset = 0, signal } = {}) => getJSON(
   `/api/threads?${query(userId, { limit: 50, offset })}`, signal, userId,
 );

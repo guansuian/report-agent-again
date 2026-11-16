@@ -1,9 +1,20 @@
 const UNITS = { hour: '小时合计', day: '按日', week: '按 ISO 周', month: '按月', year: '按年' };
-const SEXES = { 0: '未知', 1: '雄性', 2: '雌性' };
+const SEXES = { 0: '性别未知', 1: '雄性', 2: '雌性' };
+// query.monitor_type 是公司接口使用的拉丁名，页面统一展示中文。
+const SPECIES = {
+  'Aedes albopictus': '白纹伊蚊',
+  'Aedes aegypti': '埃及伊蚊',
+  'Culex quinquefasciatus': '致倦库蚊',
+  'Culex pipiens pallens': '淡色库蚊',
+  'Culex tritaeniorhynchus Giles': '三带喙库蚊',
+  'Anopheles sinensis Wiedemann': '中华按蚊',
+  'Armigeres subalbatus': '骚扰阿蚊',
+  Chironomidae: '摇蚊科',
+};
 const QUERY_LABELS = {
   start_time: '开始时间', end_time: '结束时间', time_unit: '时间粒度',
   province: '省级地区', city: '城市', district: '区县', street: '街道',
-  monitor_type: '蚊种编码', sex: '性别', dev_ids: '设备 ID',
+  dev_ids: '设备 ID',
 };
 
 // 实时消息和历史消息都从 ToolMessage.artifact 读取同一份报表。
@@ -14,18 +25,36 @@ export function reportOf(message) {
   return { id: message.id, title: artifact.display_name, ...artifact.data };
 }
 
+function reportSpecies(report) {
+  const code = report.query.monitor_type;
+  if (code === undefined || code === null) return '全部类别';
+  return SPECIES[code] || code;
+}
+
+function reportSex(report) {
+  const sex = report.query.sex;
+  if (sex === undefined || sex === null) return '全部性别';
+  return SEXES[sex];
+}
+
 export function reportSubtitle(report) {
   const query = report.query;
   const region = [query.province, query.city, query.district, query.street].filter(Boolean).join(' / ');
   const period = [query.start_time?.slice(0, 10), query.end_time?.slice(0, 10)].filter(Boolean).join(' 至 ');
-  return [region || '当前账号可见范围', period].filter(Boolean).join(' · ');
+  return [reportSpecies(report), reportSex(report), region || '当前账号可见范围', period].filter(Boolean).join(' · ');
 }
 
 export function reportConditions(report) {
-  return Object.entries(report.query).filter(([, value]) => value !== null).map(([key, value]) => ({
-    label: QUERY_LABELS[key] || key,
-    value: key === 'sex' ? SEXES[value] : key === 'time_unit' ? UNITS[value] : String(value),
-  }));
+  const conditions = [
+    { label: '蚊种', value: reportSpecies(report) },
+    { label: '性别', value: reportSex(report) },
+  ];
+  for (const [key, value] of Object.entries(report.query)) {
+    if (key === 'monitor_type' || key === 'sex' || value === null) continue;
+    const displayValue = key === 'time_unit' ? UNITS[value] : String(value);
+    conditions.push({ label: QUERY_LABELS[key] || key, value: displayValue });
+  }
+  return conditions;
 }
 
 // 当前两个报表工具都返回一个数值系列，饼图将名称放在每个数据项里。
@@ -53,6 +82,7 @@ export function reportChartOption(report, type) {
     tooltip: { trigger: type === 'pie' ? 'item' : 'axis', renderMode: 'richText', confine: true },
   };
   const series = { ...source.series[0], type };
+  if (report.query.time_unit) series.name = `${reportSpecies(report)}监测数量`;
   if (type === 'pie') {
     option.legend = { type: 'scroll', bottom: 0, itemWidth: 10, itemHeight: 10 };
     series.radius = ['32%', '57%'];

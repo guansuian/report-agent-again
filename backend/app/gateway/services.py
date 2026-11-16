@@ -37,6 +37,7 @@ from app.gateway.deps import (
     get_thread_store,
 )
 from app.gateway.run_models import RunCreateRequest
+from core.agents.memory.manager import MemoryManager
 from core.persistence.thread_meta.base import ThreadMetaStore
 from core.runtime.runs.manager import RunRecord
 from core.runtime.runs.worker import run_agent
@@ -82,7 +83,13 @@ def format_sse(event: str, data: Any, *, event_id: str | None = None) -> str:
 # ---------------------------------------------------------------------------
 
 
-async def _make_agent(*, config: dict[str, Any]):
+async def _make_agent(
+    *,
+    config: dict[str, Any],
+    memory_manager: MemoryManager | None = None,
+    user_id: str | None = None,
+    input_messages: list[dict[str, str]] | None = None,
+):
     """把同步的 make_lead_agent 包成异步工厂（run_agent 里要 await 它）。
 
     延迟 import：模块顶层 import 会顺带加载配置和模型工厂，配置一有问题，
@@ -90,7 +97,14 @@ async def _make_agent(*, config: dict[str, Any]):
     """
     from core.agents.lead_agent.agent import make_lead_agent
 
-    return make_lead_agent(config)
+    # Worker 从本轮 RunContext 和请求输入中取得这些数据，再显式交给智能体。
+    # Manager 对象不塞入 config，避免它进入图配置或检查点。
+    return make_lead_agent(
+        config,
+        memory_manager=memory_manager,
+        user_id=user_id,
+        input_messages=input_messages,
+    )
 
 
 def build_run_config(config: dict[str, Any] | None, thread_id: str) -> dict[str, Any]:

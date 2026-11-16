@@ -203,7 +203,9 @@ def _build_trend_chart(result: dict, chart_type: str) -> dict | None:
     query = result["query"]
     start = query["start_time"].split(" ")[0]
     end = query["end_time"].split(" ")[0]
-    display_name = f"{start}至{end} 蚊虫监测数量（{unit_labels[time_unit]}）"
+    monitor_type = query.get("monitor_type")
+    species_name = SPECIES_BY_CODE[monitor_type] if monitor_type is not None else "全部类别"
+    display_name = f"{start}至{end} {species_name}监测数量（{unit_labels[time_unit]}）"
     option = {
         "title": {"text": display_name},
         "tooltip": {"trigger": "axis"},
@@ -214,7 +216,7 @@ def _build_trend_chart(result: dict, chart_type: str) -> dict | None:
         },
         "yAxis": {"type": "value", "name": "监测数量", "min": 0, "minInterval": 1},
         "series": [{
-            "name": "监测数量",
+            "name": f"{species_name}监测数量",
             "type": chart_type,
             "data": [row["total_count"] for row in rows],
         }],

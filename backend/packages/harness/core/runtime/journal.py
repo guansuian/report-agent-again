@@ -18,7 +18,7 @@
 
 | 钩子 | 抓什么 | 事件 |
 | ---- | ------ | ---- |
-| on_chat_model_start | 业务模型收到的第一条用户消息，跳过摘要调用和注入的摘要 | llm.human.input |
+| on_chat_model_start | DEBUG 日志记录每次模型输入；落库只抓业务模型收到的第一条用户消息 | llm.human.input |
 | on_llm_end | 模型结果 + 累计 Token 用量；只有业务调用登记工具名单 | llm.ai.response / middleware:summarize |
 | on_tool_end | 工具结果（工具真跑时） | llm.tool.result |
 | on_chain_end | 根图收尾，补写中间件短路漏掉的工具结果 | llm.tool.result |
@@ -45,6 +45,7 @@ import logging
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
+from pprint import pformat
 from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -121,7 +122,7 @@ class RunJournal(BaseCallbackHandler):
         metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        """抓本次 run 的用户消息。只在第一次业务模型调用时落一次。
+        """DEBUG 时记录每次模型输入；用户消息只在首次业务调用时落库。
 
         调用时机：每次「真要向模型发一次请求」之前触发一次（不是按节点、
         不是按对话轮次，而是按模型调用次数）。
@@ -131,6 +132,26 @@ class RunJournal(BaseCallbackHandler):
         里。列表按时间正序排，所以「本次 run 的用户输入」在**最后**。
         正序会抓到第 1 轮的老问题，倒序才抓到本轮的新问题。
         """
+        # 先判断日志级别，INFO 等级下不整理完整请求数据。
+        # 放在下面的 return 之前，让摘要调用和后续业务调用也能打印。
+        if logger.isEnabledFor(logging.DEBUG):
+            message_batches = []
+            for batch in messages:
+                message_batch = [message.model_dump() for message in batch]
+                message_batches.append(message_batch)
+
+            model_request = {
+                "thread_id": self.thread_id,
+                "run_id": self.run_id,
+                "model_call_id": str(run_id),
+                "tags": tags or [],
+                "invocation_params": kwargs.get("invocation_params", {}),
+                "messages": message_batches,
+            }
+            # 记录框架交给模型的输入，不是接口转换后的 HTTP 请求体。
+            request_text = pformat(model_request, sort_dicts=False, width=120)
+            logger.debug("模型调用输入：\n%s", request_text)
+
         # 摘要模型收到的是内部总结请求，不能把它误存成用户问题。
         if MIDDLEWARE_SUMMARIZE_EVENT.event_type in (tags or []):
             return

@@ -8,6 +8,7 @@ requires-python = ">=3.10"
 #   langchain        —— create_agent 与 agent 原语
 #   langchain-openai —— 连模型（deepseek 走 OpenAI 兼容接口）
 #   python-dotenv    —— 读 .env，把 OPENAI_API_KEY 等注入 os.environ
+#   mem0ai           —— 长期记忆 OSS 包，提供 AsyncMemory 的保存和搜索能力
 # 数据库（postgres）—— checkpointer 持久化 + 业务表 ORM：
 #   langgraph-checkpoint-postgres —— 提供 AsyncPostgresSaver（checkpointer 用）
 #   psycopg[binary]  —— 连 postgres 的驱动（checkpointer / AsyncPostgresSaver 用）
@@ -19,6 +20,7 @@ dependencies = [
     "langchain>=0.3",
     "langchain-openai>=0.2",
     "python-dotenv==1.2.2",
+    "mem0ai==2.2.1",
     "langgraph-checkpoint-postgres>=3.2.0",
     "psycopg[binary]>=3.3.3",
     "psycopg-pool>=3.3.0",

@@ -11,12 +11,15 @@ deer-flow 这个文件有 1492 行（一堆中间件、几十个 router、多进
 
     ../.venv/bin/uvicorn app.gateway.app:app --reload --port 8000
 
+查看模型请求日志时，在启动命令前加 LOG_LEVEL=DEBUG。
+
 拆开看：app.gateway.app 是「模块路径」，最后的 :app 是「模块里的变量名」。
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,7 +27,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.gateway.routers import thread_runs, threads
+from app.gateway.routers import memories, regions, thread_runs, threads
+from core.agents.memory.manager import MemoryManager
 from core.clients import CompanyClient
 from core.config.app_config import get_app_config
 from core.persistence.engine import close_engine, init_engine_from_config
@@ -37,8 +41,9 @@ from core.runtime.stream_bridge.memory import MemoryStreamBridge
 
 # 全局日志开关：root logger 默认是 WARNING 且没有 handler，
 # 业务代码里的 logger.info(...) 会全部被丢掉（uvicorn 只配了自己的 logger）。
-# 这一行让核心模块的 INFO 日志能打到终端，比如 TokenUsageMiddleware 的用量统计。
-logging.basicConfig(level=logging.INFO)
+# 默认 INFO；设置 LOG_LEVEL=DEBUG 后，Journal 才会打印完整模型输入。
+log_level = os.getenv("LOG_LEVEL", "INFO")
+logging.basicConfig(level=log_level)
 
 
 @asynccontextmanager
@@ -69,18 +74,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 否则前端会把早就不存在的 run 一直显示成「正在生成中」。
     await app.state.run_manager.recover_orphans()
 
-    # 会话记忆（checkpointer）按配置选后端：memory 或 postgres。
-    # async with 保证服务器运行期间连接池一直开着，关闭时才关（yield 之后的退出代码执行）。
-    async with make_checkpointer() as checkpointer:
-        app.state.checkpointer = checkpointer
+    # 长期记忆管理器每个进程共用一份，用户 ID 在每次调用时传入。
+    # 关闭功能时不创建 mem0 对象，避免空配置启用它默认的模型和存储。
+    app.state.memory_manager = None
+    try:
+        if cfg.memory.enabled:
+            app.state.memory_manager = MemoryManager(cfg.memory)
 
-        # 只共用连接，不在客户端保存用户凭据。with 退出时自动 close。
-        with CompanyClient(cfg.company.base_url, timeout=cfg.company.timeout) as client:
-            app.state.company_client = client
-            yield  # ← 服务器在这段时间里对外服务
+        # 会话记忆（checkpointer）按配置选后端：memory 或 postgres。
+        # async with 保证服务器运行期间连接池一直开着，关闭时才关。
+        async with make_checkpointer() as checkpointer:
+            app.state.checkpointer = checkpointer
 
-    # 服务器关停：关闭 SQLAlchemy engine（postgres 后端时才非空）
-    await close_engine()
+            # 只共用连接，不在客户端保存用户凭据。with 退出时自动 close。
+            with CompanyClient(cfg.company.base_url, timeout=cfg.company.timeout) as client:
+                app.state.company_client = client
+                yield  # ← 服务器在这段时间里对外服务
+    finally:
+        try:
+            if app.state.memory_manager is not None:
+                app.state.memory_manager.close()
+        finally:
+            # 正常关闭或上述启动过程失败时，都关闭已创建的 SQLAlchemy engine。
+            await close_engine()
 
 
 STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
@@ -96,6 +112,8 @@ def create_app(*, static_dir: Path = STATIC_DIR) -> FastAPI:
     fastapi_app.include_router(thread_runs.router)
     fastapi_app.include_router(thread_runs.runs_router)
     fastapi_app.include_router(threads.router)
+    fastapi_app.include_router(regions.router)
+    fastapi_app.include_router(memories.router)
 
     # npm run build 会把页面生成到 backend/static。
     # 放在接口路由之后：/api 和 /docs 先匹配，其余路径再找前端文件。

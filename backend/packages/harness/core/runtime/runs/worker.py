@@ -25,8 +25,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from langchain_core.messages import HumanMessage, convert_to_messages
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
+from core.agents.memory.manager import MemoryManager
 from core.clients import CompanyClient
 from core.persistence.thread_meta.base import ThreadMetaStore
 from core.runtime.events.store.base import RunEventStore
@@ -45,7 +47,7 @@ class RunContext:
     """一次 run 的基础设施依赖 —— 对应 deer-flow 的 RunContext（worker.py:713，
     最小版）。
 
-    把 checkpointer / event_store / thread_store / company_client 等单例打包，
+    把 checkpointer / event_store / thread_store / company_client / memory_manager 等单例打包，
     让 run_agent 只收一个 ctx，而不是参数越加越长。
     用户 Token 单独通过 request_user 传递，不保存在这些共用单例中。
     """
@@ -56,6 +58,8 @@ class RunContext:
     # idle / error / interrupted。对应 deer-flow RunContext.thread_store（worker.py:713）。
     thread_store: ThreadMetaStore | None = field(default=None)
     company_client: CompanyClient | None = field(default=None)
+    # app.py 创建，deps.py 放入这里；长期记忆关闭时为 None。
+    memory_manager: MemoryManager | None = field(default=None)
 
 
 async def _update_thread_status(ctx: RunContext, thread_id: str, status: str) -> None:
@@ -139,7 +143,31 @@ async def run_agent(
         # ④ 建 agent + 把 journal 挂成 callback + 挂 checkpointer
         # 凭据仅在执行上下文里传递；LangChain 在线程中执行同步工具时会继承它。
         with use_company_access(ctx.company_client, request_user):
-            agent = await agent_factory(config=config)
+            agent_kwargs: dict[str, Any] = {"config": config}
+            if ctx.memory_manager is not None:
+                # 只从本次请求取用户消息，不从 checkpointer 恢复的历史中截取。
+                # 使用框架的消息转换和纯文字属性，不修改原输入中的消息 ID、表单属性。
+                request_messages = convert_to_messages(graph_input.get("messages", []))
+                input_messages = []
+                for message in request_messages:
+                    if not isinstance(message, HumanMessage):
+                        continue
+                    extra = message.additional_kwargs
+                    if extra.get("dynamic_context_reminder") or extra.get("context_summary"):
+                        continue
+                    if extra.get("hide_from_ui") and not extra.get("human_input_response"):
+                        continue
+                    text = message.text.strip()
+                    if text:
+                        input_messages.append({"role": "user", "content": text})
+
+                # 用户归属取自本次 run 记录，不从调用方提供的图配置中猜测。
+                # services.py 的工厂接收这些参数，再传给 agent.py 和记忆中间件。
+                agent_kwargs["memory_manager"] = ctx.memory_manager
+                agent_kwargs["user_id"] = record.user_id
+                agent_kwargs["input_messages"] = input_messages
+
+            agent = await agent_factory(**agent_kwargs)
             if journal:
                 config.setdefault("callbacks", []).append(journal)
             if checkpointer:

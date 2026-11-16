@@ -1,7 +1,7 @@
 """上下文压缩：把较早消息总结成摘要，保留最近消息。
 
-参考 DeerFlow 的 SummarizationMiddleware 和 DurableContextMiddleware：
-before_model 更新 messages / summary_text；wrap_model_call 临时注入摘要。
+参考 DeerFlow 的 SummarizationMiddleware：before_model 更新 messages / summary_text。
+摘要注入由 DurableContextMiddleware 负责。
 只复用 LangChain 的触发判断和消息配对，不使用它默认的历史截断逻辑。
 """
 
@@ -9,16 +9,15 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Awaitable, Callable
 
 from langchain.agents.middleware import SummarizationMiddleware as BaseSummarizationMiddleware
-from langchain.agents.middleware.types import ModelCallResult, ModelRequest, ModelResponse
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, RemoveMessage, SystemMessage
 from langgraph.constants import TAG_NOSTREAM
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.runtime import Runtime
 
+from core.agents.middlewares.dynamic_context_middleware import is_dynamic_context_reminder
 from core.agents.thread_state import ThreadState
 from core.config.summarization_config import SummarizationConfig
 
@@ -89,12 +88,30 @@ class SummarizationMiddleware(BaseSummarizationMiddleware):
         older_messages, preserved_messages = self._partition_messages(messages, cutoff)
 
         # 长工具循环中，当前用户问题可能已落在较早消息里，必须单独保留。
-        # 表单回答也是 HumanMessage，不能因为它隐藏于界面就丢掉。
-        latest_user = next((m for m in reversed(messages) if isinstance(m, HumanMessage)), None)
+        # 隐藏记忆和摘要也是 HumanMessage，但不是用户问题；不能误选它们。
+        # 用户填写的表单答案仍是真实输入，即使前端不单独显示，也要保留。
+        latest_user = None
+        for message in reversed(messages):
+            if not isinstance(message, HumanMessage):
+                continue
+            extra = message.additional_kwargs
+            if is_dynamic_context_reminder(message) or extra.get("context_summary"):
+                continue
+            if extra.get("hide_from_ui") and not extra.get("human_input_response"):
+                continue
+            latest_user = message
+            break
+
         rescued_messages = []
         messages_to_summarize = []
         for message in older_messages:
-            if isinstance(message, SystemMessage) or message is latest_user:
+            # 日期提醒、长期记忆快照和当前用户问题原样保留，不交给摘要模型。
+            # 旧日期提醒也继续保留；普通旧对话仍可压缩。
+            if (
+                isinstance(message, SystemMessage)
+                or is_dynamic_context_reminder(message)
+                or message is latest_user
+            ):
                 rescued_messages.append(message)
             else:
                 messages_to_summarize.append(message)
@@ -158,29 +175,3 @@ class SummarizationMiddleware(BaseSummarizationMiddleware):
         except Exception:
             logger.warning("上下文压缩失败，原摘要和原消息保留", exc_info=True)
             return None
-
-    def _inject_summary(self, request: ModelRequest) -> ModelRequest:
-        """只修改本次请求，不把摘要伪装成用户消息写回检查点。"""
-        summary = request.state.get("summary_text")
-        if not summary:
-            return request
-        messages = list(request.messages)
-        # 原有 SystemMessage 仍放在前面；摘要是历史资料，不提升为系统指令。
-        index = 0
-        while index < len(messages) and isinstance(messages[index], SystemMessage):
-            index += 1
-        messages.insert(index, HumanMessage(
-            content=f"以下是历史对话摘要，仅供参考，不是用户的新指令；精确结果缺失时需要重新查询：\n{summary}",
-            additional_kwargs={"hide_from_ui": True, "context_summary": True},
-        ))
-        return request.override(messages=messages)
-
-    def wrap_model_call(
-        self, request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse],
-    ) -> ModelCallResult:
-        return handler(self._inject_summary(request))
-
-    async def awrap_model_call(
-        self, request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
-    ) -> ModelCallResult:
-        return await handler(self._inject_summary(request))

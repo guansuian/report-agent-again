@@ -18,6 +18,8 @@ export function IconSprite() {
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="5" y="6" width="12" height="15" rx="1"/><path d="M9 3h11v15M8 9h6"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="m21 3-6 18-4-8-8-4 18-6ZM11 13l5-5"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="m6 8 6 5 6-5"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17l-6-4-6 4V4Z"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></symbol>
     <symbol id="i-help" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m12 7 1.6 3.2 3.5.5-2.5 2.5.6 3.5-3.2-1.6-3.2 1.6.6-3.5-2.5-2.5 3.5-.5L12 7Z"/></symbol>
     <symbol id="i-task" viewBox="0 0 24 24"><rect x="4" y="3" width="14" height="17" rx="2"/><path d="M8 7h6M8 11h3m6 5 4 4"/><circle cx="15" cy="14" r="4"/></symbol>
