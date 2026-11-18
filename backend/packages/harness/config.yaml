@@ -63,10 +63,14 @@ loop_detection_enabled: true
 token_budget_enabled: false
 summarization:
   enabled: true
-  trigger_tokens: 200
+  trigger_tokens: 32000
   keep_messages: 4
-  max_input_tokens: 16000
+  max_input_tokens: 64000
   max_output_tokens: 1000
+
+suggestions:
+  enabled: true
+  max_suggestions: 3  # 每次最多生成的推荐问题数，允许 1 至 5 个。
 
 tool_artifacts:
   enabled: true

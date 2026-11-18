@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from core.config.company_config import CompanyConfig
 from core.config.memory_config import MemoryConfig
+from core.config.suggestions_config import SuggestionsConfig
 from core.config.summarization_config import SummarizationConfig
 from core.config.tool_artifact_config import ToolArtifactConfig
 
@@ -116,6 +117,7 @@ class AppConfig(BaseModel):
     company: CompanyConfig = Field(default_factory=CompanyConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     summarization: SummarizationConfig = Field(default_factory=SummarizationConfig)
+    suggestions: SuggestionsConfig = Field(default_factory=SuggestionsConfig)
     tool_artifacts: ToolArtifactConfig = Field(default_factory=ToolArtifactConfig)
 
     # 下面这些布尔开关，在真实实现里分别对应一个独立配置文件的 ``.enabled`` 字段

@@ -86,6 +86,9 @@ export function useChat(userId, toast) {
         messages: preserve && !rows.length ? previous.messages || [] : messages,
         oldestSeq: rows[0]?.seq, hasMore: rows.length === 50,
         error: keepError,
+        // 只标记从执行中转为成功的这一轮；打开已完成的历史会话不触发推荐。
+        completedRunId: run?.status === 'success' && isActive(previous.run?.status) && previous.run?.run_id === run.run_id
+          ? run.run_id : previous.completedRunId,
       }));
       setCatalog(previous => ({ ...previous, sessions: previous.sessions.map(item => item.id === id ? {
         ...item, ...sessionOf(thread), runId: run?.run_id || null,
@@ -139,7 +142,7 @@ export function useChat(userId, toast) {
     } : {};
     const userMessage = { id: uid(), role: 'user', content: text, additional_kwargs };
     const optimistic = { id: userMessage.id, role: 'user', text, additionalKwargs: additional_kwargs, pending: true };
-    updateView(id, previous => ({ ...previous, messages: [...(previous.messages || []), optimistic], run: { status: 'pending' }, error: '', loaded: true }));
+    updateView(id, previous => ({ ...previous, messages: [...(previous.messages || []), optimistic], run: { status: 'pending' }, completedRunId: null, error: '', loaded: true }));
     try {
       const title = activeSession.title === '新对话' ? text.slice(0, 24) : activeSession.title;
       const thread = activeSession.draft

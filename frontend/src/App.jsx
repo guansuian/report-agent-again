@@ -3,6 +3,7 @@ import { Icon, IconSprite } from './Icons.jsx';
 import companyLogo from './assets/company-logo.svg';
 import { useChat } from './hooks/useChat.js';
 import { useRegions } from './hooks/useRegions.js';
+import { useSuggestions } from './hooks/useSuggestions.js';
 import { groupMessagesForDisplay, isActive, STATUS_LABELS } from './lib/messages.js';
 import { RunHistory } from './components/RunHistory.jsx';
 import { TokenUsageIndicator } from './components/TokenUsageIndicator.jsx';
@@ -15,6 +16,7 @@ import { reportOf } from './lib/reportArtifacts.js';
 import { ReportCard } from './components/ReportCard.jsx';
 import { ReportPanel } from './components/ReportPanel.jsx';
 import { QuickInputCapsules } from './components/QuickInputCapsules.jsx';
+import { FollowupSuggestions } from './components/FollowupSuggestions.jsx';
 
 // 独立页面和报表图表按需加载。
 const RunUsagePage = lazy(() => import('./components/RunUsagePage.jsx').then(module => ({ default: module.RunUsagePage })));
@@ -86,7 +88,7 @@ function Messages({ messages, busy, onPrompt, onCopy, onAnswer, humanInput, repo
   });
 }
 
-function Composer({ value, onChange, busy, disabled, onSend, onTasks, inputRef, waiting, regions }) {
+function Composer({ value, onChange, busy, disabled, onSend, onTasks, inputRef, waiting, regions, suggestions, completedRunId, active }) {
   useEffect(() => {
     const input = inputRef.current;
     input.style.height = 'auto';
@@ -94,6 +96,7 @@ function Composer({ value, onChange, busy, disabled, onSend, onTasks, inputRef, 
   }, [value, inputRef]);
   const ready = !disabled && Boolean(value.trim());
   return <section className="composer-wrap" aria-label="消息输入区">
+    <FollowupSuggestions key={completedRunId || 'pending'} state={suggestions} value={value} onChange={onChange} inputRef={inputRef} disabled={disabled} active={active} />
     <div className="composer-toolbar"><span className="composer-label"><span className="online-dot" />{busy ? '正在处理你的问题' : waiting ? '助手正在等你补充信息' : '报表助手'}</span><button className="toolbar-button" onClick={onTasks}><Icon name="task" />任务记录</button></div>
     <form className="composer" onSubmit={event => { event.preventDefault(); if (ready) onSend(); }}>
       <textarea ref={inputRef} placeholder={busy ? '可以先写下一个问题，等待当前回复完成…' : waiting ? '也可以在这里回答上面的问题…' : '您想咨询什么...'} aria-label="输入消息" rows="2" value={value} onChange={event => onChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (ready) onSend(); } }} />
@@ -175,6 +178,10 @@ function ChatPage({ userId, active, onLogout }) {
   const busy = isActive(view.run?.status) || streamingThread === session.id;
   const disabled = busy || Boolean(streamingThread) || Boolean(view.loading) || !view.loaded || Boolean(view.error && !view.loaded);
   const error = view.error || (['error', 'timeout', 'interrupted'].includes(view.run?.status) ? view.run.error || STATUS_LABELS[view.run.status] : '');
+  const suggestions = useSuggestions({
+    userId, threadId: session.id, completedRunId: view.completedRunId, messages,
+    ready: !disabled && !error && view.run?.status === 'success' && !humanInput.openRequest,
+  });
 
   useEffect(() => () => clearTimeout(toastTimer.current), []);
   useEffect(() => {
@@ -195,7 +202,7 @@ function ChatPage({ userId, active, onLogout }) {
     const region = conversation.current;
     if (olderScroll.current) { region.scrollTop = olderScroll.current.top + region.scrollHeight - olderScroll.current.height; olderScroll.current = null; }
     else if (followEnd.current) region.scrollTop = region.scrollHeight;
-  }, [messages]);
+  }, [messages, suggestions.loading, suggestions.questions, suggestions.error]);
 
   async function copy(text, label = '已复制回复') {
     try { await navigator.clipboard.writeText(text); toast(label); }
@@ -242,7 +249,7 @@ function ChatPage({ userId, active, onLogout }) {
         {busy && <div className="generation-status" role="status"><span className="thinking-dots"><i /><i /><i /></span>{streamingThread === session.id ? '正在思考并生成回复…' : '任务仍在执行，正在同步消息…'}</div>}
         {error && <div className="chat-error" role="alert"><p>{error}</p><div><button className="text-button" onClick={chat.refresh}><Icon name="refresh" />重新同步</button><button className="text-button" onClick={() => openDialog('tasks')}>查看任务记录</button></div></div>}
       </div></div>
-      <Composer key={session.id} value={input} onChange={setInput} busy={busy} disabled={disabled} waiting={Boolean(humanInput.openRequest)} onSend={() => void send()} onTasks={() => openDialog('tasks')} inputRef={inputRef} regions={regions} />
+      <Composer key={session.id} value={input} onChange={setInput} busy={busy} disabled={disabled} waiting={Boolean(humanInput.openRequest)} onSend={send} onTasks={() => openDialog('tasks')} inputRef={inputRef} regions={regions} suggestions={suggestions} completedRunId={view.completedRunId} active={active} />
       </div>{!!reports.length && <div className="report-panel-shell" inert={!reportPanelOpen}><ReportPanel key={session.id} reports={reports} selectedId={reportSelection?.threadId === session.id ? reportSelection.id : null} onSelect={toggleReport} onClose={() => setReportSelection(previous => ({ ...previous, open: false }))} onQuestion={questionReport} active={active && Boolean(reportPanelOpen)} /></div>}</div>
     </main>
     <div className={`toast${notice ? ' visible' : ''}`} role="status">{notice}</div>

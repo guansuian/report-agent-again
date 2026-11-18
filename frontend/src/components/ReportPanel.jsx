@@ -1,16 +1,19 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
+import { Alert, Table } from 'antd';
 import { Icon } from '../Icons.jsx';
 import { CHART_LABELS, formatReportValue, reportConditions, reportRows, reportSubtitle, reportTypes } from '../lib/reportArtifacts.js';
 
 const ReportChart = lazy(() => import('./ReportChart.jsx'));
 
 function ReportTable({ report }) {
-  const rows = reportRows(report);
-  return <div className="report-table-wrap"><table className="report-table">
-    <caption>{report.title}，共 {rows.length} 个分组</caption>
-    <thead><tr><th scope="col">{report.query.time_unit ? '时间分组' : '蚊种'}</th><th scope="col">监测数量</th></tr></thead>
-    <tbody>{rows.map((row, index) => <tr key={index}><th scope="row">{row.label}</th><td>{formatReportValue(row.value)}</td></tr>)}</tbody>
-  </table></div>;
+  const columns = report.columns.map(column => ({
+    key: column.key, title: column.label, dataIndex: ['values', column.key], render: formatReportValue,
+  }));
+  // 显示编号只供表格定位行，不改写工具返回的原始字段。
+  const rows = report.rows.map((values, index) => ({ key: index, values }));
+  return <div className="report-table-wrap" role="region" aria-label={`${report.title}数据表格`}>
+    <Table columns={columns} dataSource={rows} pagination={false} size="small" scroll={{ x: 'max-content' }} />
+  </div>;
 }
 
 function ReportView({ report, view, type, enlarged = false }) {
@@ -37,7 +40,7 @@ function ReportContent({ report, active, expanded, view, type, onView, onType })
   useEffect(() => { if (!active || !expanded) setEnlarged(false); }, [active, expanded]);
   return <>
     <p className="report-subtitle">{reportSubtitle(report)}</p>
-    <div className="report-metrics"><div><span>返回分组合计</span><strong>{formatReportValue(total)}</strong></div><div><span>{report.query.time_unit ? '时间分组' : '蚊种类别'}</span><strong>{rows.length}<small> 组</small></strong></div></div>
+    <div className="report-metrics"><div><span>返回分组合计</span><strong>{formatReportValue(total)}</strong></div><div><span>{report.dimension.label}</span><strong>{report.rows.length}<small> {report.dimension.unit}</small></strong></div></div>
     <section className="report-visual" aria-label="报表展示">
       <div className="report-view-toolbar"><div className="report-segments" aria-label="展示方式">{[['chart', '图表'], ['table', '数据表格']].map(([value, label]) => <button type="button" key={value} className={view === value ? 'active' : ''} aria-pressed={view === value} onClick={() => onView(value)}>{label}</button>)}</div><button type="button" className="text-button" onClick={() => setEnlarged(true)}><Icon name="expand" />放大</button></div>
       {view === 'chart' && <div className="report-chart-types" aria-label="图表类型">{reportTypes(report).map(value => <button type="button" key={value} className={type === value ? 'active' : ''} aria-pressed={type === value} disabled={value === 'pie' && !hasPositiveValue} title={value === 'pie' && !hasPositiveValue ? '没有正数数据时无法展示占比' : undefined} onClick={() => onType(value)}>{CHART_LABELS[value]}</button>)}</div>}
@@ -65,7 +68,7 @@ function ReportListItem({ report, number, expanded, onToggle, onQuestion, active
   return <section className={`report-list-item${expanded ? ' expanded' : ''}`}>
     <button ref={toggleButton} type="button" className="report-list-toggle" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle}>
       <span className="report-list-number">{String(number).padStart(2, '0')}</span>
-      <span className="report-list-label"><strong>{report.title}</strong><small>{report.query.time_unit ? '时间趋势' : '种类构成'} · {reportSubtitle(report)}</small></span>
+      <span className="report-list-label"><strong>{report.title}</strong><small>{report.report_label} · {reportSubtitle(report)}</small></span>
       <Icon name="chevron-down" />
     </button>
     <div id={contentId} className="report-list-collapse" inert={!expanded} onTransitionEnd={event => {
@@ -81,6 +84,8 @@ export function ReportPanel({ reports, selectedId, onSelect, onClose, onQuestion
   return <aside className="report-panel" aria-label="右侧报表区">
     <div className="report-panel-heading"><div><span className="report-eyebrow">报表工作区</span><h2>产物列表 <small>{reports.length}</small></h2></div><button className="icon-button" aria-label="关闭报表区" onClick={onClose}><Icon name="close" /></button></div>
     <p className="report-list-hint">点击展开报表，再次点击收起</p>
-    <div className="report-panel-scroll">{reports.map((report, index) => <ReportListItem key={report.id} report={report} number={index + 1} expanded={report.id === selectedId} onToggle={() => onSelect(report.id)} onQuestion={onQuestion} active={active} />)}</div>
+    <div className="report-panel-scroll">{reports.map((report, index) => report.error
+      ? <div className="report-invalid" key={report.id}><Alert type="warning" showIcon title={report.title} description={report.error} /></div>
+      : <ReportListItem key={report.id} report={report} number={index + 1} expanded={report.id === selectedId} onToggle={() => onSelect(report.id)} onQuestion={onQuestion} active={active} />)}</div>
   </aside>;
 }

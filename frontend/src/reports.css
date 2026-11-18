@@ -65,12 +65,10 @@
 .report-local-hint { margin:9px 0 17px; font-size:10px; color:#a3aec0; text-align:center; }
 .report-loading { display:grid; place-items:center; min-height:340px; color:#8a96ad; font-size:12px; }
 .report-table-wrap { margin-top:14px; max-height:390px; overflow:auto; }
-.report-table { width:100%; border-collapse:collapse; font-size:12px; }
-.report-table caption { text-align:left; color:#929db1; font-size:11px; padding:0 0 10px; }
-.report-table th,.report-table td { padding:11px 12px; border-bottom:1px solid #edf0f7; text-align:left; font-weight:400; white-space:nowrap; }
-.report-table thead th { background:#f5f7fc; color:#8996ac; position:sticky; top:0; }
-.report-table th:last-child,.report-table td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
-.report-table tbody tr:hover { background:#f9faff; }
+.report-table-wrap .ant-table { font-size:12px; }
+.report-table-wrap .ant-table-cell { white-space:nowrap; }
+.report-invalid { margin-bottom:12px; }
+.report-card-unavailable { background:#f8f9fc; }
 .report-conditions { border-top:1px solid #edf0f7; padding-top:13px; }
 .report-conditions summary { font-size:12px; font-weight:550; cursor:pointer; }
 .report-conditions dl { margin:12px 0 18px; display:grid; grid-template-columns:1fr 1fr; gap:11px 18px; }

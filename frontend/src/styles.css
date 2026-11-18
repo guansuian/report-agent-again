@@ -93,6 +93,19 @@
     .suggestion-tag { padding:4px 9px; border-radius:20px; background:#f4f9ff; color:#a5baff; font-size:12px; white-space:nowrap; }
     .suggestion .icon { background:white; color:#bdb6fb; border-radius:50%; padding:2px; width:17px; height:17px; }
     .composer-wrap { flex-shrink:0; width:calc(100% - 56px); max-width:850px; margin:0 auto; padding:0 0 15px; }
+    .followup-suggestions { margin:0 0 14px; }
+    .followup-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:7px; }
+    .followup-heading>span { display:flex; align-items:center; gap:6px; color:#8798b1; font-size:12px; }
+    .followup-heading .icon { width:15px; height:15px; }
+    .followup-heading .ant-btn { color:#9aa8bc; }
+    .followup-questions { display:flex; flex-wrap:wrap; gap:8px; }
+    .followup-questions .followup-chip { height:auto; max-width:100%; padding:6px 12px; border-color:#dce5f3; border-radius:22px; color:#64738c; background:#ffffffd9; font-size:12px; white-space:normal; text-align:left; }
+    .followup-questions .followup-chip>span { overflow-wrap:anywhere; }
+    .followup-loading { display:flex; align-items:center; gap:9px; padding:6px 0; color:#8a9ab1; font-size:12px; }
+    .followup-draft { margin-top:16px; padding:12px 14px; border-radius:9px; background:#f4f7fc; }
+    .followup-preview { margin-top:14px; }
+    .followup-draft>span,.followup-preview>span { color:#8798b1; font-size:12px; }
+    .followup-draft>p,.followup-preview>p { margin:5px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; }
     .composer-toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
     .toolbar-button { display:flex; align-items:center; gap:7px; padding:8px 12px; border-radius:7px; font-size:13px; background:#e0ebf6; color:#6c7b8e; }
     .toolbar-button:first-child { background:#ffffffb0; color:#98a6ba; }

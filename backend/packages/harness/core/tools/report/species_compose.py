@@ -11,6 +11,7 @@ import math
 from typing import Literal
 
 from core.clients import get_company_client
+from core.tools.common.conditions import build_report_conditions
 from core.tools.common import (
     SPECIES_BY_CODE,
     SPECIES_CODES,
@@ -144,8 +145,18 @@ def _build_compose_chart(result: dict, chart_type: str) -> dict | None:
         }]
 
     chart_data = {
+        "report_label": "种类构成",
+        "dimension": {"label": "蚊种类别", "unit": "类"},
+        "chart_types": ["pie", "bar"] if result["total_count"] > 0 else ["bar"],
+        "columns": [
+            {"key": "species_name", "label": "蚊种"},
+            {"key": "count", "label": "监测数量"},
+            {"key": "ratio", "label": "占比（%）"},
+        ],
+        "rows": rows,
         "option": option,
         "query": dict(query),
+        "conditions": build_report_conditions(query),
         "scope": result["scope"],
         "ratio_scope": result["ratio_scope"],
         "note": result["note"],

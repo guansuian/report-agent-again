@@ -48,6 +48,12 @@ export const listRegions = (userId, signal) => getJSON('/api/regions', signal, u
 export const listMemories = (userId, signal) => getJSON(
   `/api/memories?${query(userId)}`, signal, userId,
 );
+export const getSuggestionsConfig = (userId, signal) => getJSON('/api/suggestions/config', signal, userId);
+export const generateSuggestions = (threadId, { userId, messages, n, signal }) => requestJSON(
+  `/api/threads/${encodeURIComponent(threadId)}/suggestions?${query(userId)}`,
+  { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify({ messages, n }) },
+  userId,
+);
 export const listThreads = (userId, { offset = 0, signal } = {}) => getJSON(
   `/api/threads?${query(userId, { limit: 50, offset })}`, signal, userId,
 );

@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from typing import Literal
 
 from core.clients import get_company_client
+from core.tools.common.conditions import build_report_conditions
 from core.tools.common import (
     SPECIES_BY_CODE,
     SPECIES_CODES,
@@ -222,8 +223,17 @@ def _build_trend_chart(result: dict, chart_type: str) -> dict | None:
         }],
     }
     chart_data = {
+        "report_label": "时间趋势",
+        "dimension": {"label": "时间分组", "unit": "组"},
+        "chart_types": ["line", "bar"],
+        "columns": [
+            {"key": "time_point", "label": "小时" if time_unit == "hour" else "时间分组"},
+            {"key": "total_count", "label": "监测数量"},
+        ],
+        "rows": rows,
         "option": option,
         "query": dict(query),
+        "conditions": build_report_conditions(query),
         "scope": result["scope"],
         "note": result["note"],
     }
