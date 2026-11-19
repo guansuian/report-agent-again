@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
 import { Alert, Table } from 'antd';
 import { Icon } from '../Icons.jsx';
-import { CHART_LABELS, formatReportValue, reportConditions, reportRows, reportSubtitle, reportTypes } from '../lib/reportArtifacts.js';
+import { CHART_LABELS, formatReportValue, reportConditions, reportRows, reportSubtitle, reportSummary, reportTypes } from '../lib/reportArtifacts.js';
 
 const ReportChart = lazy(() => import('./ReportChart.jsx'));
 
@@ -36,11 +36,11 @@ function ReportContent({ report, active, expanded, view, type, onView, onType })
   const [enlarged, setEnlarged] = useState(false);
   const rows = reportRows(report);
   const hasPositiveValue = rows.some(row => row.value > 0);
-  const total = rows.every(row => typeof row.value === 'number') ? rows.reduce((sum, row) => sum + row.value, 0) : null;
+  const summary = reportSummary(report);
   useEffect(() => { if (!active || !expanded) setEnlarged(false); }, [active, expanded]);
   return <>
     <p className="report-subtitle">{reportSubtitle(report)}</p>
-    <div className="report-metrics"><div><span>返回分组合计</span><strong>{formatReportValue(total)}</strong></div><div><span>{report.dimension.label}</span><strong>{report.rows.length}<small> {report.dimension.unit}</small></strong></div></div>
+    <div className="report-metrics"><div><span>{summary.label}</span><strong>{formatReportValue(summary.value)}</strong></div><div><span>{report.dimension.label}</span><strong>{report.dimension.count ?? report.rows.length}<small> {report.dimension.unit}</small></strong></div></div>
     <section className="report-visual" aria-label="报表展示">
       <div className="report-view-toolbar"><div className="report-segments" aria-label="展示方式">{[['chart', '图表'], ['table', '数据表格']].map(([value, label]) => <button type="button" key={value} className={view === value ? 'active' : ''} aria-pressed={view === value} onClick={() => onView(value)}>{label}</button>)}</div><button type="button" className="text-button" onClick={() => setEnlarged(true)}><Icon name="expand" />放大</button></div>
       {view === 'chart' && <div className="report-chart-types" aria-label="图表类型">{reportTypes(report).map(value => <button type="button" key={value} className={type === value ? 'active' : ''} aria-pressed={type === value} disabled={value === 'pie' && !hasPositiveValue} title={value === 'pie' && !hasPositiveValue ? '没有正数数据时无法展示占比' : undefined} onClick={() => onType(value)}>{CHART_LABELS[value]}</button>)}</div>}

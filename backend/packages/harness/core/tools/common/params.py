@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # 日期：只约束类型，语义（北京时间、含首尾）交给工具 docstring。
 StartDate = Annotated[date, Field(description="开始日期 YYYY-MM-DD，含当天")]
@@ -42,3 +42,23 @@ DeviceIds = Annotated[
 # 分页：字典类接口用，页码从 1 起，每页最多 200。
 Page = Annotated[int, Field(ge=1)]
 PageSize = Annotated[int, Field(ge=1, le=200)]
+
+
+class EnvironmentFilter(BaseModel):
+    """统计接口共用的单个环境范围。"""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    sensor_type: Literal["temp", "hum", "wind", "co2", "light"]
+    lower: float | None = None
+    upper: float | None = None
+    lower_inclusive: bool = True
+    upper_inclusive: bool = False
+
+    @model_validator(mode="after")
+    def check_bounds(self):
+        if self.lower is not None and self.upper is not None:
+            if self.lower > self.upper:
+                raise ValueError("环境范围的下限不能大于上限。")
+            if self.lower == self.upper and not (self.lower_inclusive and self.upper_inclusive):
+                raise ValueError("相同上下限必须同时包含边界，否则范围为空。")
+        return self

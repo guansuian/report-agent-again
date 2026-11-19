@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from core.tools.common.errors import ToolInputError
+from core.tools.common.errors import ToolDataError, ToolInputError
 
 # 性别字符串 → 公司接口编码（老项目约定：0 未知 / 1 雄性 / 2 雌性）。
 _SEX_CODES = {"unknown": 0, "male": 1, "female": 2}
@@ -160,6 +160,29 @@ def check_regions(
     for item in ancestors + (node,):
         resolved[item["level"]] = item["name"].strip()
     return resolved
+
+
+def get_region_code(region_tree: list[dict], resolved: dict[str, str]) -> str:
+    """沿 check_regions 已补全的地区路径，取得最深节点的编码。
+
+    只取最终选中的地区，不把其上级编码一起发送，避免扩大筛选范围。
+    此函数不改写名称，也不改变 check_regions 的返回结构。
+    """
+    nodes = region_tree
+    selected = None
+    for level, name in resolved.items():
+        matches = [
+            node for node in nodes
+            if node["level"] == level and node["name"].strip() == name
+        ]
+        if len(matches) != 1:
+            raise ToolDataError("地区树无法按已校验路径唯一定位编码。")
+        selected = matches[0]
+        nodes = selected.get("children") or []
+    code = selected.get("code") if selected is not None else None
+    if not isinstance(code, str) or not code.strip():
+        raise ToolDataError("已选地区缺少非空文本编码 code。")
+    return code
 
 
 def check_device_ids(dev_ids: list[int] | None) -> list[int] | None:
