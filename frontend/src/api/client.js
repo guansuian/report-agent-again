@@ -44,6 +44,20 @@ async function requestJSON(path, options, userId) {
 const query = (userId, parameters = {}) => new URLSearchParams({ user_id: normalizeUserId(userId), ...parameters }).toString();
 // userId 只用于核对当前登录身份，不放入地区接口的地址或请求体。
 export const listRegions = (userId, signal) => getJSON('/api/regions', signal, userId);
+export const getExportStatus = (exportId, userId, signal) => getJSON(
+  `/api/exports/${encodeURIComponent(exportId)}`, signal, userId,
+);
+export async function downloadExport(exportId, userId, signal) {
+  try {
+    const response = await checked(await fetch(`/api/exports/${encodeURIComponent(exportId)}/download`, {
+      headers: requestHeaders(userId), signal, cache: 'no-store',
+    }));
+    return await response.blob();
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error('无法连接服务，请确认后端已启动，然后重试。');
+    throw error;
+  }
+}
 // 记忆列表接口返回 { results: [{ id, memory, created_at, updated_at }] }。
 export const listMemories = (userId, signal) => getJSON(
   `/api/memories?${query(userId)}`, signal, userId,

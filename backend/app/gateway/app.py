@@ -27,7 +27,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.gateway.routers import memories, regions, suggestions, thread_runs, threads
+from app.gateway.routers import exports, memories, regions, suggestions, thread_runs, threads
 from core.agents.memory.manager import MemoryManager
 from core.clients import CompanyClient
 from core.config.app_config import get_app_config
@@ -115,6 +115,7 @@ def create_app(*, static_dir: Path = STATIC_DIR) -> FastAPI:
     fastapi_app.include_router(regions.router)
     fastapi_app.include_router(memories.router)
     fastapi_app.include_router(suggestions.router)
+    fastapi_app.include_router(exports.router)
 
     # npm run build 会把页面生成到 backend/static。
     # 放在接口路由之后：/api 和 /docs 先匹配，其余路径再找前端文件。

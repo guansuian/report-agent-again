@@ -320,6 +320,30 @@ button:disabled { opacity:.55; }
 .assistant-part { display:flex; flex-direction:column; gap:10px; }
 .assistant-turn .tool-result { width:100%; max-width:100%; }
 .assistant-turn .message-actions { padding:0; }
+.export-file-card.ant-card { width:100%; min-width:0; border-color:#dce5f1; border-radius:14px; background:#fcfdff; }
+.export-file-card .ant-card-body { padding:18px; }
+.export-file-heading { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+.export-file-icon.ant-avatar { flex-shrink:0; background:#e9f5ef; color:#287453; font-size:12px; font-weight:600; }
+.export-file-copy { flex:1 1 140px; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.export-file-copy strong { color:#465875; font-size:15px; font-weight:550; overflow-wrap:anywhere; }
+.export-file-copy>span { color:#7e8da4; font-size:12px; }
+.export-file-status.ant-tag { margin-inline-end:0; border-radius:20px; }
+.export-file-steps.ant-steps { margin:20px 0 16px; }
+.export-file-steps .ant-steps-item-title { font-size:12px; }
+.export-file-bottom { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-top:14px; }
+.export-file-description { flex:1 1 160px; color:#60728d; font-size:13px; }
+.export-file-description p { margin:0; }
+.export-file-description>span { display:block; margin-top:4px; color:#8290a5; font-size:12px; }
+.export-file-bottom>.ant-btn { flex-shrink:0; }
+.export-file-bottom .icon { width:16px; height:16px; }
+.export-file-alert.ant-alert { margin-top:14px; }
+.export-file-alert .ant-alert-actions { margin-inline-start:8px; }
+.export-file-details.ant-collapse { margin-top:16px; border-top:1px solid #e2e9f4; }
+.export-file-details.ant-collapse>.ant-collapse-item>.ant-collapse-header { padding:10px 0 0; color:#7c8ba1; font-size:12px; }
+.export-file-details .ant-collapse-body { padding:10px 0 0; }
+.export-file-details .ant-descriptions-item-label { color:#8190a6; font-size:12px; }
+.export-file-details .ant-descriptions-item-content { color:#60718c; font-size:12px; overflow-wrap:anywhere; }
+@media(max-width:480px) { .export-file-card .ant-card-body { padding:13px; } .export-file-heading { gap:9px; } .export-file-copy { flex-basis:115px; } .export-file-status.ant-tag { margin-left:57px; } .export-file-alert .ant-alert-actions { margin-inline-start:0; } }
 .assistant-turn .clarification-card { border-radius:14px; box-shadow:none; }
 @media(max-width:640px) { .assistant-turn>.message-body { padding:14px; gap:13px; border-radius:4px 19px 19px 19px; } }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }

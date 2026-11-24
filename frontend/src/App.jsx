@@ -14,6 +14,7 @@ import { Login } from './components/Login.jsx';
 import { loadLogin, saveLogin } from './storage.js';
 import { reportOf } from './lib/reportArtifacts.js';
 import { ReportCard } from './components/ReportCard.jsx';
+import { ExportCard } from './components/ExportCard.jsx';
 import { ReportPanel } from './components/ReportPanel.jsx';
 import { QuickInputCapsules } from './components/QuickInputCapsules.jsx';
 import { FollowupSuggestions } from './components/FollowupSuggestions.jsx';
@@ -61,26 +62,31 @@ function Sidebar({ chat, query, onQuery, onSelect, onNew, onManage, onOpen, onHe
   </aside>;
 }
 
-function Messages({ messages, busy, onPrompt, onCopy, onAnswer, humanInput, reports, selectedReportId, onReport }) {
+function Messages({ messages, busy, onPrompt, onCopy, onAnswer, humanInput, reports, selectedReportId, onReport, userId, active, onRetryExport }) {
   if (!messages.length) return <div className="welcome"><Avatar /><div className="welcome-eyebrow">让数据为你的工作提供答案</div><h1>你好，今天想了解什么？</h1><p>查询销售额、用户增长或订单情况，从一个问题开始。</p><div className="welcome-prompts">{['查询本月销售额', '本月新增用户有多少？', '查看本月订单情况'].map(text => <button disabled={busy} key={text} onClick={() => onPrompt(text)}><Icon name="arrow" />{text}</button>)}</div></div>;
   // 同批包含追问时，中间件已经丢弃其他调用，不展示过滤前的工具名称。
   const toolCallsOf = message => message.toolCalls?.some(call => call.name === 'ask_clarification') ? [] : message.toolCalls || [];
+  const isExportMessage = message => message.role === 'tool' && message.artifact?.artifact_type === 'export';
   return groupMessagesForDisplay(messages).map(group => {
     if (group.role === 'user') return <article className="message user" key={group.id}><div className="bubble">{group.messages[0].text}</div><Avatar user /></article>;
-    const visibleMessages = group.messages.filter(message => clarificationOf(message) || reports.some(report => report.id === message.id) || message.text || toolCallsOf(message).length);
+    const visibleMessages = group.messages.filter(message => clarificationOf(message) || reports.some(report => report.id === message.id) || isExportMessage(message) || message.text || toolCallsOf(message).length);
     if (!visibleMessages.length) return null;
+    // 文件卡片放在本轮回复文字之后，不跨越用户消息移动到其他轮次。
+    const exportMessages = visibleMessages.filter(isExportMessage);
+    const orderedMessages = [...visibleMessages.filter(message => !isExportMessage(message)), ...exportMessages];
     const replyText = visibleMessages.filter(message => message.role === 'assistant' && message.text).map(message => message.text).join('\n\n');
     return <article className="message assistant assistant-turn" aria-label="AI 回复" key={group.id}><Avatar /><div className="message-body">
-      {visibleMessages.map(message => {
+      {orderedMessages.map(message => {
         const request = clarificationOf(message);
         if (request) return <ClarificationCard key={message.id} request={request} answer={humanInput.answers.get(request.request_id)} active={humanInput.openRequest?.request_id === request.request_id} disabled={busy} onAnswer={onAnswer} />;
         const report = reports.find(item => item.id === message.id);
         if (report) return <ReportCard key={message.id} report={report} selected={report.id === selectedReportId} onOpen={onReport} />;
+        if (isExportMessage(message)) return <ExportCard key={`${message.id}:${message.artifact.data.export_id}`} artifact={message.artifact} userId={userId} active={active} onRetry={onRetryExport} />;
         if (message.role === 'tool') return <details className="tool-result" key={message.id}><summary>{message.name === 'query_report' ? '报表查询结果' : message.name || '工具结果'}<span>展开查看</span></summary><pre>{message.text}</pre></details>;
         const visibleCalls = toolCallsOf(message);
         return <div className="assistant-part" key={message.id}>
           {message.text && <div className="bubble"><MarkdownMessage text={message.text} /></div>}
-          {!!visibleCalls.length && <div className="tool-calls"><Icon name="search" />{visibleCalls.map(call => call.name === 'query_report' ? '查询报表数据' : call.name || '执行工具').join('、')}</div>}
+          {!!visibleCalls.length && <div className="tool-calls"><Icon name="search" />{visibleCalls.map(call => call.name === 'query_report' ? '查询报表数据' : call.name === 'create_export' ? '创建导出任务' : call.name || '执行工具').join('、')}</div>}
         </div>;
       })}
       {replyText && <div className="message-actions"><button className="icon-button" aria-label="复制回复" onClick={() => onCopy(replyText)}><Icon name="copy" /></button></div>}
@@ -235,6 +241,13 @@ function ChatPage({ userId, active, onLogout }) {
     setInput(`关于「${report.title}」，我想了解：`);
     inputRef.current.focus();
   }
+  function retryExport(task) {
+    const format = task.format === 'xlsx' ? 'Excel' : 'CSV';
+    const request = `请重新导出「${task.file_name}」对应的报表，产物编号为 ${task.artifact_handle}，格式为 ${format}。`;
+    setInput(previous => previous.trim() ? `${previous}\n${request}` : request);
+    inputRef.current.focus();
+    toast('已填入输入框，确认发送后才会重新创建导出任务。');
+  }
   const openDialog = type => setDialog({ type });
   return <>
     <Header userId={userId} onLogout={onLogout} sidebarOpen={sidebarOpen} onMenu={() => setSidebarOpen(!sidebarOpen)} onHome={() => { followEnd.current = true; conversation.current.scrollTop = conversation.current.scrollHeight; }} onDialog={openDialog} />
@@ -245,7 +258,7 @@ function ChatPage({ userId, active, onLogout }) {
       <div className={`workspace-content${reportPanelOpen ? ' with-report' : ''}`}><div className="chat-column">
       <div ref={conversation} className="conversation" role="region" aria-label="聊天记录" tabIndex="0" onScroll={() => { const region = conversation.current; followEnd.current = region.scrollHeight - region.scrollTop - region.clientHeight < 100; }}><div className="conversation-inner">
         {view.hasMore && <div className="load-older"><button className="text-button" disabled={view.paging || busy} onClick={() => { olderScroll.current = { top: conversation.current.scrollTop, height: conversation.current.scrollHeight }; void chat.loadOlder(); }}>{view.paging ? '正在加载…' : '加载更早的消息'}</button></div>}
-        {view.loading && !messages.length ? <div className="loading-history"><span className="spinner" />正在读取聊天记录…</div> : <Messages key={session.id} messages={messages} busy={disabled} onPrompt={send} onCopy={copy} onAnswer={answer} humanInput={humanInput} reports={reports} selectedReportId={selectedReportId} onReport={toggleReport} />}
+        {view.loading && !messages.length ? <div className="loading-history"><span className="spinner" />正在读取聊天记录…</div> : <Messages key={session.id} messages={messages} busy={disabled} onPrompt={send} onCopy={copy} onAnswer={answer} humanInput={humanInput} reports={reports} selectedReportId={selectedReportId} onReport={toggleReport} userId={userId} active={active} onRetryExport={retryExport} />}
         {busy && <div className="generation-status" role="status"><span className="thinking-dots"><i /><i /><i /></span>{streamingThread === session.id ? '正在思考并生成回复…' : '任务仍在执行，正在同步消息…'}</div>}
         {error && <div className="chat-error" role="alert"><p>{error}</p><div><button className="text-button" onClick={chat.refresh}><Icon name="refresh" />重新同步</button><button className="text-button" onClick={() => openDialog('tasks')}>查看任务记录</button></div></div>}
       </div></div>

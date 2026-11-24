@@ -14,6 +14,7 @@ from langchain_core.tools import BaseTool
 
 from core.config.app_config import AppConfig
 from core.tools.builtins.clarification_tool import ask_clarification_tool
+from core.tools.export.create_export import create_export
 from core.tools.report import species_compose
 from core.tools.report.dictionaries import dictionaries
 from core.tools.report.device_list import device_list
@@ -29,7 +30,7 @@ from core.tools.report.species_trend import species_trend
 
 
 def get_available_tools(*, app_config: AppConfig | None = None, **kwargs) -> list[BaseTool]:
-    """收集本次运行可用的工具：查构成、查趋势、查排名、查设备、查环境分布与相关性、查生境、周期比较、向用户提问。
+    """收集本次运行可用的工具：查构成、查趋势、查排名、查设备、查环境分布与相关性、查生境、周期比较、导出报表、向用户提问。
 
     真实实现会按 kwargs 里的 model_name / groups / mcp_plugins / subagent_enabled
     等开关做真实的筛选。这里先固定返回全部。
@@ -38,4 +39,4 @@ def get_available_tools(*, app_config: AppConfig | None = None, **kwargs) -> lis
     不登记它就没有「反问用户」这个动作可选。
     """
     _ = app_config, kwargs
-    return [species_compose, species_trend, region_analysis, device_rank, device_list, device_overview, environment_distribution, environment_correlation, habitat_analysis, dictionaries, mosquito_dictionaries, period_compare, ask_clarification_tool]
+    return [species_compose, species_trend, region_analysis, device_rank, device_list, device_overview, environment_distribution, environment_correlation, habitat_analysis, dictionaries, mosquito_dictionaries, period_compare, create_export, ask_clarification_tool]
