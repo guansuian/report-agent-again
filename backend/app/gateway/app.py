@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.gateway.routers import exports, memories, regions, suggestions, thread_runs, threads
 from core.agents.memory.manager import MemoryManager
+from core.agents.middlewares.memory_middleware import flush_background_writes
 from core.clients import CompanyClient
 from core.config.app_config import get_app_config
 from core.persistence.engine import close_engine, init_engine_from_config
@@ -92,6 +93,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 yield  # ← 服务器在这段时间里对外服务
     finally:
         try:
+            # 先等后台写记忆收尾：任务还在跑时关闭 mem0，会和它抢连接。
+            # 最多等 5 秒，超时放弃，不拖住进程退出。
+            await flush_background_writes(timeout=5.0)
             if app.state.memory_manager is not None:
                 app.state.memory_manager.close()
         finally:

@@ -148,6 +148,7 @@
           <h2 class="group-title">运行与交互</h2>
           <button class="feature-tab" id="tab-usage" type="button" role="tab" aria-selected="false" aria-controls="summary-content" tabindex="-1">Token 用量记录</button>
           <button class="feature-tab" id="tab-suggest" type="button" role="tab" aria-selected="false" aria-controls="summary-content" tabindex="-1">推荐问题</button>
+          <button class="feature-tab" id="tab-export" type="button" role="tab" aria-selected="false" aria-controls="summary-content" tabindex="-1">文件导出</button>
         </section>
       </div>
       <p class="sidebar-note">按功能复习<br>沿数据流理解实现</p>
@@ -633,6 +634,47 @@ flowchart TD
 &lt;/few-shot&gt;</code></pre>
         </section>
       </article>
+      <article class="structure-page" id="export-page" hidden>
+        <p class="document-path">阶段性总结 / 运行与交互</p>
+        <h2 class="document-title">文件导出</h2>
+        <section class="document-section">
+          <h3><span class="section-number">01</span>关键文件与职责</h3>
+          <pre style="white-space: pre-wrap; overflow-wrap: anywhere;"><code>backend/packages/harness/core/agents/middlewares/durable_context_middleware.py
+  把可导出产物的编号、名称和查询范围交给 AI，不注入表格明细。
+
+backend/packages/harness/core/tools/export/create_export.py
+  根据产物编号读取原 query，调用公司接口创建导出任务，返回文件产物。
+
+backend/packages/harness/core/runtime/journal.py
+  将包含文件产物的工具消息保存到 run_events，供刷新后恢复卡片。
+
+backend/app/gateway/routers/exports.py
+  携带当前用户身份查询任务状态、下载文件，不调用模型。
+
+frontend/src/components/ExportCard.jsx
+  展示文件卡片，查询最新状态，处理下载与重新导出的交互。</code></pre>
+          <p class="section-note">当前支持区域分析、生境分析和环境区间分布。AI 只需要选择产物编号和文件格式；完整查询条件由工具从 State.tool_artifacts 中读取。</p>
+        </section>
+        <section class="document-section">
+          <h3><span class="section-number">02</span>从提问到下载</h3>
+          <figure class="callback-flow" aria-label="文件导出流程：用户要求导出，AI选择已有产物，工具复用原查询创建任务，保存文件卡片，前端查询进度并通过网关下载。">
+            <div class="mermaid">
+flowchart TD
+    A["用户要求导出已有报表<br/>AI 从清单选择产物编号"] --> B["create_export 读取原查询条件<br/>POST /api/v1/agent/exports 创建任务"]
+    B --> C["返回文件产物，Journal 保存到 run_events<br/>前端在本轮回复下方展示文件卡片"]
+    C --> D["前端通过网关查询最新状态<br/>排队或生成中时，每 2.5 秒查询一次"]
+    D --> E["文件就绪后显示下载按钮<br/>用户点击，经网关带身份下载文件"]
+            </div>
+          </figure>
+          <p class="section-note">公司状态为 queued（排队）、processing（生成中）、ready（可下载）、failed（失败）、expired（过期）。就绪、失败或过期后停止轮询；失败和过期时显示“重新导出”，先填入草稿，用户确认发送后才创建新任务。</p>
+        </section>
+        <section class="document-section">
+          <h3><span class="section-number">03</span>记住这三点</h3>
+          <p><strong>谁生成文件：</strong>AI 负责选择报表，公司后端负责生成文件。本轮 AI 回复结束，不代表文件已经做好；文件生成期间可以继续聊天。</p>
+          <p><strong>保存了什么：</strong><code>State.tool_artifacts</code> 保存原报表和查询条件，供后端找到要导出的内容；<code>run_events</code> 保存文件卡片信息，包括 <code>export_id</code> 和创建时的状态，不保存文件内容。</p>
+          <p><strong>刷新怎么办：</strong>从历史消息恢复卡片，先显示“正在查询文件状态”，再按原 <code>export_id</code> 查询最新状态，不重新创建任务。历史消息里的“排队”只是旧快照，不能直接当成当前状态。</p>
+        </section>
+      </article>
     </main>
   </div>
 
@@ -650,6 +692,7 @@ flowchart TD
     const clarificationPage = document.getElementById('clarification-page');
     const tokenUsagePage = document.getElementById('token-usage-page');
     const suggestionsPage = document.getElementById('suggestions-page');
+    const exportPage = document.getElementById('export-page');
 
     function selectTab(selectedTab) {
       for (const tab of tabs) {
@@ -667,6 +710,7 @@ flowchart TD
       clarificationPage.hidden = selectedTab.id !== 'tab-clarify';
       tokenUsagePage.hidden = selectedTab.id !== 'tab-usage';
       suggestionsPage.hidden = selectedTab.id !== 'tab-suggest';
+      exportPage.hidden = selectedTab.id !== 'tab-export';
       // 显示后再渲染，避免隐藏页面中的流程图尺寸计算不正确。
       void mermaid.run({ querySelector: '.structure-page:not([hidden]) .mermaid' });
     }

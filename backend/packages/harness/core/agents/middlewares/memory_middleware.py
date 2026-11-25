@@ -7,12 +7,45 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import AIMessage
 from langgraph.runtime import Runtime
 
 from core.agents.memory.manager import MemoryManager
 from core.agents.thread_state import ThreadState
+
+logger = logging.getLogger(__name__)
+
+# 后台写记忆的任务必须保住引用：asyncio 只保存弱引用，
+# 任务被回收时连异常一起消失。
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _log_write_failure(task: asyncio.Task) -> None:
+    """后台写记忆失败只记日志；这一轮已经正常结束，不再影响用户。"""
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
+        logger.warning("长期记忆写入失败，本轮已正常结束", exc_info=error)
+
+
+async def flush_background_writes(timeout: float) -> None:
+    """服务关闭前等后台写记忆收尾；超时就放弃，不拖住进程退出。"""
+    if not _background_tasks:
+        return
+
+    pending = list(_background_tasks)
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*pending, return_exceptions=True),
+            timeout=timeout,
+        )
+    except TimeoutError:
+        logger.warning("长期记忆写入未在 %.0f 秒内完成，放弃剩余任务", timeout)
 
 
 class MemoryMiddleware(AgentMiddleware[ThreadState]):
@@ -87,6 +120,12 @@ class MemoryMiddleware(AgentMiddleware[ThreadState]):
             return None
 
         # 3. 最终交给 Manager 的只有：用户 ID，以及本轮的 role/content 列表。
-        # await 会等待 mem0 处理；异常向外抛出，不在这里吞掉或自动重试。
-        await self._manager.add(user_id=self._user_id, messages=messages)
+        # 放到后台任务里执行：mem0 要调用一次提炼模型，等它会让整轮 run 迟迟不结束。
+        # 失败不再抛给用户，由 _log_write_failure 记日志。
+        task = asyncio.create_task(
+            self._manager.add(user_id=self._user_id, messages=messages)
+        )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+        task.add_done_callback(_log_write_failure)
         return None  # 记忆由 mem0 保存，这个中间件不修改 State。
